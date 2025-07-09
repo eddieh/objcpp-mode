@@ -26,9 +26,12 @@
   (require 'cc-fonts)
   (require 'cc-menus))
 
+
 (defgroup objc++ nil
   "Major mode for editing ObjC++ code."
-  :group 'prog-mode)
+  :group 'prog-mode
+  :prefix "objc++-")
+
 
 (eval-and-compile
   (c-add-language 'objc++-mode 'c++-mode)
@@ -58,16 +61,23 @@
   objc++ '("include" "import"))
 
 (c-lang-defconst c-operators
-  t `(
-      ;; Unary.
-      (prefix "++" "--" "+" "-" "!" "~"
-	      ,@(when (c-major-mode-is 'objc++-mode)
-		  '("@selector" "@protocol" "@encode")))))
+  objc++ '("@selector" "@protocol" "@encode"))
 
 (c-lang-defconst c-other-op-syntax-tokens
   objc++ (append '("#" "##"		; Used by cpp.
 		   "+" "-")
 		 (c-lang-const c-other-op-syntax-tokens)))
+
+
+(c-lang-defconst c-literal-start-regexp
+  ;; Regexp to match the start of comments and string literals.
+  objc++ (concat (c-lang-const c-comment-start-regexp)
+		 "\\|"
+		 (if (memq 'gen-string-delim c-emacs-features)
+		     "\"\\|\\s|@\"|"
+		   "\"")))
+(c-lang-defvar c-literal-start-regexp (c-lang-const c-literal-start-regexp))
+
 
 (c-lang-defconst c-primitive-type-kwds
   objc++ (append
@@ -139,12 +149,238 @@
 (c-lang-defvar c-opt-method-key (c-lang-const c-opt-method-key))
 
 (c-lang-defconst c-type-decl-end-used
-  t (or (c-lang-const c-recognize-colon-labels)
-	(and (c-lang-const c-label-kwds) t))
-  ;; `c-decl-end' is used to mark the end of the @-style directives in
-  ;; Objective-C.
   objc++ t)
 (c-lang-defvar c-type-decl-end-used (c-lang-const c-type-decl-end-used))
+
+
+;; Objective-C & Objective-C++ add some defun-ish types.
+;;
+;; Class:
+;;
+;;     @interface ClassName
+;;     @end
+;;
+;; Protocol:
+;;
+;;     @protocol ProtocolName
+;;     @end
+;;
+;; Implementation:
+;;
+;;     @implementation ClassName
+;;     @end
+;;
+;; Methods:
+;;
+;;     - (void)methodName {
+;;     }
+;;
+;;     + newClassNameWithObject:(id)obj {
+;;     }
+;;
+;; Literal array:
+;;
+;;     @[ obj1, obj2, obj3 ]
+;;
+;; Literal dictionaries:
+;;
+;;     @{ @"key1": obj1, @"key2": obj2 }
+;;
+;; Blocks:
+;;
+;;     ^{ ... }
+;;
+;;     ^ () { ... }
+;;
+;;     ^ void (void) { ... }
+;;
+;;     ^ (int arg1) { ... }
+;;
+;;     ^ int (int arg1) { return 42; }
+
+(defun objc++-beginning-of-defun ()
+  "Move backward to beginning of an ObjC/ObjC++ defuns and fallback on
+`c-beginning-of-defun' if it fails."
+  (interactive)
+  (objc++-beginning-of-defun-1))
+
+(defun objc++-beginning-of-defun-1 ()
+  (let ((start (point))
+	found)
+    (while (and (not (bobp))
+		(not found))
+      (if (re-search-backward (eval-when-compile
+				(c-make-keywords-re t
+				  '("@interface" "@implementation" "@protocol")
+				  'objc++-mode))
+			      nil 'move) ; unbounded & always move
+	  (cond
+	   ((c-in-literal nil t)
+	    (c-backward-syntactic-ws))
+	   ((looking-at "@protocol[:space:]*\("))
+	   ((looking-at "@protocol[[:space:]]+[[:alpha:]_]+")
+	    (and
+	     (save-excursion
+	       (objc++-forward-directive)
+	       (c-forward-syntactic-ws)
+	       (if (or (eq (char-after) ?,)
+		       (eq (char-after) ?\;))
+		   nil))
+	     (setq found t)))
+	   (t
+	    (setq found t)))))
+    (if (not found)
+	(progn
+	  (goto-char start)
+	  (beginning-of-defun)))))
+
+(defun objc++-end-of-defun ()
+  ""
+  (interactive)
+  (objc++-end-of-defun-1))
+
+(defun objc++-end-of-defun-1 ()
+  )
+
+(defun objc++-forward-directive ()
+  (interactive)
+  (objc++-forward-directive-1))
+
+(defun objc++-forward-directive-1 ()
+  ;; Assuming the point is at the beginning of a token, try to move
+  ;; forward to the end of the Objective-C directive that starts
+  ;; there.  Return t if a directive was fully recognized, otherwise
+  ;; the point is moved as far as one could be successfully parsed and
+  ;; nil is returned.
+  ;;
+  ;; This function records identifier ranges on
+  ;; `c-record-type-identifiers' and `c-record-ref-identifiers' if
+  ;; `c-record-type-identifiers' is non-nil.
+  ;;
+  ;; This function might do hidden buffer changes.
+
+  (let ((start (point))
+	start-char
+	(c-promote-possible-types t)
+	lim
+	;; Turn off recognition of angle bracket arglists while parsing
+	;; types here since the protocol reference list might then be
+	;; considered part of the preceding name or superclass-name.
+	c-recognize-<>-arglists)
+
+    (if (or
+	 (when (looking-at
+		(eval-when-compile
+		  (c-make-keywords-re t
+		    (append (c-lang-const c-protection-kwds objc++)
+			    '("@end"))
+		    'objc++-mode)))
+	   (goto-char (match-end 1))
+	   t)
+
+	 (and
+	  (looking-at
+	   (eval-when-compile
+	     (c-make-keywords-re t
+	       '("@interface" "@implementation" "@protocol")
+	       'objc++-mode)))
+
+	  ;; Handle the name of the class itself.
+	  (progn
+            ;; (c-forward-token-2) ; 2006/1/13 This doesn't move if the token's
+            ;; at EOB.
+	    (goto-char (match-end 0))
+	    (setq lim (point))
+	    (c-skip-ws-forward)
+	    (c-forward-type))
+
+	  (catch 'break
+	    ;; Look for ": superclass-name" or "( category-name )".
+	    (when (looking-at "[:(]")
+	      (setq start-char (char-after))
+	      (forward-char)
+	      (c-forward-syntactic-ws)
+	      (unless (c-forward-type) (throw 'break nil))
+	      (when (eq start-char ?\()
+		(unless (eq (char-after) ?\)) (throw 'break nil))
+		(forward-char)
+		(c-forward-syntactic-ws)))
+
+	    ;; Look for a protocol reference list.
+	    (if (eq (char-after) ?<)
+		(let ((c-recognize-<>-arglists t)
+		      (c-parse-and-markup-<>-arglists t)
+		      c-restricted-<>-arglists)
+		  (c-forward-<>-arglist t))
+	      t))))
+
+	(progn
+	  (c-backward-syntactic-ws lim)
+	  (c-clear-c-type-property start (1- (point)) 'c-decl-end)
+	  (c-put-c-type-property (1- (point)) 'c-decl-end)
+	  t)
+
+      (c-clear-c-type-property start (point) 'c-decl-end)
+      nil)))
+
+(advice-add
+ 'c-forward-declarator
+ :around #'objc++-forward-declarator-guard)
+
+;; (advice-mapc (lambda (fn prop) (message "%s" fn)) 'c-forward-declarator)
+;; (advice-remove 'c-forward-declarator #'objc++-forward-declarator-guard)
+
+(defun objc++-forward-declarator-guard (orig-fun &rest args)
+  (if (c-major-mode-is 'objc++-mode)
+      (apply #'objc++-forward-declarator orig-fun args)
+    (apply orig-fun args)))
+
+(defun objc++-forward-declarator (orig-fun &rest args)
+  (let ((here (point))
+	(limit (car args))
+	id-start id-end brackets-after-id paren-depth decorated
+	got-init arglist double-double-quote pos)
+    (or limit (setq limit (point-max)))
+    (if (looking-at
+	 (eval-when-compile
+	   (c-make-keywords-re t
+	     '("@interface" "@implementation" "@protocol")
+	     'objc++-mode)))
+	(let (found)
+	  (prog1
+	      (setq found
+		    (c-syntactic-re-search-forward
+		     ;; Consider making the next regexp a
+		     ;; c-lang-defvar (2023-07-04).
+		     (if (c-major-mode-is 'objc++-mode)
+			 "\\(?:@end\\)\\|[;:,]\\|\\(=\\|[[(]\\)"
+		       "[;:,]\\|\\(=\\|\\s(\\)")
+		     limit 'limit t))
+	    (setq got-init
+		  (and found (match-beginning 1))))
+	  (when (and found
+		     (memq (char-before) '(?\; ?\: ?, ?= ?\( ?\[ ?{)))
+	    (backward-char))
+	  (list id-start id-end brackets-after-id got-init decorated arglist))
+      (goto-char here)
+      (apply orig-fun args))))
+
+
+(advice-add
+ 'c-just-after-func-arglist-p
+ :around #'objc++-just-after-func-arglist-p)
+
+;; (advice-mapc (lambda (fn prop) (message "%s" fn)) 'c-just-after-func-arglist-p)
+;; (advice-remove 'c-just-after-func-arglist-p #'objc++-just-after-func-arglist-p)
+
+(defun objc++-just-after-func-arglist-p (orig-fun &rest args)
+  (let ((lim (car args)))
+    (if (c-major-mode-is 'objc++-mode)
+	(and
+	 (eq (c-beginning-of-statement-1 lim nil nil nil t) 'same)
+	 (not (objc++-forward-directive-1)))
+      (apply orig-fun args))))
+
 
 (advice-add
  'c-guess-basic-syntax
@@ -159,44 +395,40 @@
     (apply orig-fun args)))
 
 (defun objc++-guess-basic-syntax (orig-fun &rest args)
-  (save-excursion
-    (beginning-of-line)
-    (c-save-buffer-state
-	((indent-point (point)))
+  (cond
 
-      (cond
+   ;; ObjC Method
+   ((save-excursion
+      (goto-char (c-point 'boi))
+      (looking-at c-opt-method-key))
+    `((objc-method-intro ,(c-point 'boi))))
 
-       ;; ObjC Method
-       ((save-excursion
-	  (goto-char (c-point 'boi))
-	  (and c-opt-method-key
-	       (looking-at c-opt-method-key)
-	       (save-excursion
-		 (c-beginning-of-statement-1 (c-determine-limit 1000) t))))
-	`((objc-method-intro ,(c-point 'boi))))
+   ;; ObjC Method Continued
+   ((save-excursion
+      (goto-char (c-point 'boi))
+      (setq save-point (point))
+      (c-beginning-of-statement-1)
+      (when (looking-at c-opt-method-key)
+	(if (eq save-point (point))
+	    nil
+	  t)))
+    `((objc-method-args-cont ,(c-point 'bol))))
 
-       ;; ;; @interface, @implementation, @protocol
-       ;; ((save-excursion
-       ;; 	  (c-beginning-of-statement-1)
-       ;; 	  (c-at-toplevel-p))
-       ;; 	`((topmost-intro ,(c-point 'boi))))
+   (t
+    (apply orig-fun args))))
 
-       ((save-excursion
-	  (catch 'not-in-directive
-	    (c-beginning-of-statement-1)
-	    (setq placeholder (point))
-	    (while (and (c-forward-objc-directive)
-			(< (point) indent-point))
-	      (c-forward-syntactic-ws)
-	      (if (>= (point) indent-point)
-		  (throw 'not-in-directive t))
-	      (setq placeholder (point)))
-	    nil))
-	(goto-char placeholder)
-	`((topmost-intro ,(c-point 'boi))))
 
-       (t
-	(apply orig-fun args))))))
+(defcustom objc++-font-lock-extra-types nil
+  (c-make-font-lock-extra-types-blurb
+   "ObjC++" "objc++-mode"
+   (concat
+    "For example, a value of (\"[" c-upper "]\\\\sw*[" c-lower "]\\\\sw*\") means
+capitalized words are treated as type names (the requirement for a
+lower case char is to avoid recognizing all-caps macro and constant
+names)."))
+  :type 'c-extra-types-widget
+  :safe #'c-string-list-p
+  :group 'objc++)
 
 (defconst objc++-font-lock-keywords-1 (c-lang-const c-matchers-1 objc++)
   "Minimal font locking for ObjC++ mode.")
@@ -216,6 +448,7 @@
   (c-compose-keywords-list objc++-font-lock-keywords-3))
 (defun objc++-font-lock-keywords ()
   (c-compose-keywords-list objc++-font-lock-keywords))
+
 
 (defconst objc++-syle
   '((c-basic-offset . 4)
@@ -292,6 +525,7 @@
     (setq c-default-style
           (cons '(objc++-mode . "objc++") c-default-style))))
 
+
 (defvar objc++-mode-syntax-table
   (funcall (c-lang-const c-make-mode-syntax-table objc++))
   "Syntax table used in `objc++-mode' buffers.")
@@ -304,14 +538,23 @@
 (easy-menu-define objc++-mode-menu objc++-mode-map "ObjC++ Mode Commands."
   (cons "ObjC++" (c-lang-const c-mode-menu objc++)))
 
+(defcustom objc++-mode-hook nil
+  "Hook called by `objc++-mode'."
+  :type 'hook
+  :group 'objc++)
+
 ;;;###autoload
 (define-derived-mode objc++-mode prog-mode "ObjC++"
   "Major mode for editing ObjC++ code.
 
 Key bindings:
 \\{objc++-mode-map}"
-  :after-hook (c-update-modeline)
+  :group 'objc++
+  :after-hook (progn (c-make-noise-macro-regexps)
+		     (c-make-macro-with-semi-re)
+		     (c-update-modeline))
   (c-initialize-cc-mode t)
+  (setq abbrev-mode t)
   (c-init-language-vars objc++-mode)
   (c-common-init 'objc++-mode)
   ;;(setq-local c-doc-comment-style '((objc++-mode . ???)))
