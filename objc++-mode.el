@@ -85,8 +85,7 @@
 	  (c-lang-const c-primitive-type-kwds)))
 
 (c-lang-defconst c-class-decl-kwds
-  objc++ '("struct" "union"
-	   "@interface" "@implementation" "@protocol"))
+  objc++ '("@interface" "@implementation" "@protocol"))
 
 ;; (c-lang-defconst c-other-block-decl-kwds
 ;;     objc++ '("@interface" "@implementation" "@protocol"))
@@ -147,6 +146,11 @@
 		  "\\)?")
 	  "\\(" (c-lang-const c-symbol-key) "\\)"))
 (c-lang-defvar c-opt-method-key (c-lang-const c-opt-method-key))
+
+(c-lang-defconst c-opt-class-key
+  ;; Special regexp to match the start of ObjC/ObjC++ classes
+  objc++ (c-make-keywords-re t (c-lang-const c-class-decl-kwds)))
+(c-lang-defvar c-opt-class-key (c-lang-const c-opt-class-key))
 
 (c-lang-defconst c-type-decl-end-used
   objc++ t)
@@ -209,11 +213,8 @@
 	found)
     (while (and (not (bobp))
 		(not found))
-      (if (re-search-backward (eval-when-compile
-				(c-make-keywords-re t
-				  '("@interface" "@implementation" "@protocol")
-				  'objc++-mode))
-			      nil 'move) ; unbounded & always move
+      ; use regexp search backwards unbounded & always move
+      (if (re-search-backward (c-lang-const c-opt-class-key) nil 'move)
 	  (cond
 	   ((c-in-literal nil t)
 	    (c-backward-syntactic-ws))
@@ -344,11 +345,7 @@
 	id-start id-end brackets-after-id paren-depth decorated
 	got-init arglist double-double-quote pos)
     (or limit (setq limit (point-max)))
-    (if (looking-at
-	 (eval-when-compile
-	   (c-make-keywords-re t
-	     '("@interface" "@implementation" "@protocol")
-	     'objc++-mode)))
+    (if (looking-at (c-lang-const c-opt-class-key))
 	(let (found)
 	  (prog1
 	      (setq found
@@ -555,6 +552,7 @@ Key bindings:
   :group 'objc++
   :after-hook (progn (c-make-noise-macro-regexps)
 		     (c-make-macro-with-semi-re)
+		     ;; (message "used for init debugging")
 		     (c-update-modeline))
   (c-initialize-cc-mode t)
   (setq abbrev-mode t)
