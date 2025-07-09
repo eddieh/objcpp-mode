@@ -261,7 +261,7 @@
 
   (let ((start (point))
 	start-char
-	(c-promote-possible-types t)
+	;; (c-promote-possible-types t)
 	lim
 	;; Turn off recognition of angle bracket arglists while parsing
 	;; types here since the protocol reference list might then be
@@ -314,13 +314,13 @@
 		  (c-forward-<>-arglist t))
 	      t))))
 
-	(progn
-	  (c-backward-syntactic-ws lim)
-	  (c-clear-c-type-property start (1- (point)) 'c-decl-end)
-	  (c-put-c-type-property (1- (point)) 'c-decl-end)
-	  t)
+	;; (progn
+	;;   (c-backward-syntactic-ws lim)
+	;;   (c-clear-c-type-property start (1- (point)) 'c-decl-end)
+	;;   (c-put-c-type-property (1- (point)) 'c-decl-end)
+	;;   t)
 
-      (c-clear-c-type-property start (point) 'c-decl-end)
+      ;;(c-clear-c-type-property start (point) 'c-decl-end)
       nil)))
 
 (advice-add
