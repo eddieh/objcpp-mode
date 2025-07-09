@@ -232,15 +232,18 @@
     (if (not found)
 	(progn
 	  (goto-char start)
-	  (beginning-of-defun)))))
+	  (c-beginning-of-defun)))))
 
 (defun objc++-end-of-defun ()
-  ""
+  "Move forward to end of an ObjC/ObjC++ defuns and fallback on
+`c-end-of-defun' if it fails."
   (interactive)
   (objc++-end-of-defun-1))
 
 (defun objc++-end-of-defun-1 ()
-  )
+  (unless (c-syntactic-re-search-forward "@end" nil t)
+    (c-end-of-defun)))
+
 
 (defun objc++-forward-directive ()
   (interactive)
