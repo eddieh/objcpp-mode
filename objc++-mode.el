@@ -173,12 +173,38 @@
 	  "\\(" (c-lang-const c-symbol-key) "\\)"))
 (c-lang-defvar c-opt-method-key (c-lang-const c-opt-method-key))
 
+(c-lang-defconst c-opt-protocol-op-key
+  objc++ (concat
+	  "@protocol" (c-lang-const c-simple-ws) "*" "\("))
+(c-lang-defvar c-opt-protocol-op-key (c-lang-const c-opt-protocol-op-key))
+
+(c-lang-defconst c-opt-class-forward-decl-key
+  objc++ (concat
+	  "@class"
+	  (c-lang-const c-simple-ws) "+"
+	  "\\(" (c-lang-const c-symbol-key) "\\)"
+	  (c-lang-const c-simple-ws) "*"
+	  "\\([,;]\\)"))
+(c-lang-defvar c-opt-class-forward-decl-key
+  (c-lang-const c-opt-class-forward-decl-key))
+
+(c-lang-defconst c-opt-protocol-forward-decl-key
+  objc++ (concat
+	  "@protocol"
+	  (c-lang-const c-simple-ws) "+"
+	  "\\(" (c-lang-const c-symbol-key) "\\)"
+	  (c-lang-const c-simple-ws) "*"
+	  "\\([,;]\\)"))
+(c-lang-defvar c-opt-protocol-forward-decl-key
+  (c-lang-const c-opt-protocol-forward-decl-key))
+
 (c-lang-defconst c-type-decl-end-used
   objc++ t)
 (c-lang-defvar c-type-decl-end-used (c-lang-const c-type-decl-end-used))
 
 
 (defun objc++-unsyntacticp ()
+  "Checks if point is in a string or comment."
   (c-in-literal nil t))
 
 ;; Objective-C & Objective-C++ add some defun-ish types.
@@ -258,18 +284,10 @@
       ;; use regexp search backwards unbounded & always move
       (if (re-search-backward (c-lang-const c-opt-class-key) nil 'move)
 	  (cond
-	   ((c-in-literal nil t)
+	   ((objc++-unsyntacticp)
 	    (c-backward-syntactic-ws))
-	   ((looking-at "@protocol[:space:]*\("))
-	   ((looking-at "@protocol[[:space:]]+[[:alpha:]_]+")
-	    (and
-	     (save-excursion
-	       (objc++-forward-directive)
-	       (c-forward-syntactic-ws)
-	       (if (or (eq (char-after) ?,)
-		       (eq (char-after) ?\;))
-		   nil))
-	     (setq found t)))
+	   ((looking-at (c-lang-const c-opt-protocol-op-key)))
+	   ((looking-at (c-lang-const c-opt-protocol-forward-decl-key)))
 	   (t
 	    (setq found t)))))
     (if (not found)
@@ -457,48 +475,52 @@
 	 objc-defun-beg objc-defun-end objc-defun-kwd
 	 defun-beg defun-end defun-kwd)
       (save-excursion
-	(goto-char (c-point 'boi))
-	(setq found-syntax
-	      (cond
+	(save-excursion
+	  (goto-char (c-point 'boi))
+	  (setq found-syntax
+		(cond
 
-	       ;; @import AppKit;
-	       ((looking-at (c-lang-const c-opt-import-key))
-		`((objc-import-intro ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; @import AppKit;
+		 ((looking-at (c-lang-const c-opt-import-key))
+		  `((objc-import-intro ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ;; @class ForwardClassOne, ForwardClassTwo;
-	       ;; @protocol ForwardProtoOne, ForwardProtoTwo;
-	       ((looking-at (c-lang-const c-opt-forward-decl-key))
-		;; TODO: check @protocol() is not the operator form
-		`((objc-forward-decl-intro ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; @class ForwardClassOne, ForwardClassTwo;
+		 ((looking-at (c-lang-const c-opt-class-forward-decl-key))
+		  `((objc-forward-decl-intro ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ;; @interface ClassName
-	       ((looking-at (c-lang-const c-opt-class-key))
-		`((objc-class-intro ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; @protocol ForwardProtoOne, ForwardProtoTwo;
+		 ((looking-at (c-lang-const c-opt-protocol-forward-decl-key))
+		  `((objc-forward-decl-intro ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ;; @public, @private, etc
-	       ((looking-at (c-lang-const c-opt-protection-key))
-		`((access-label ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; @interface ClassName
+		 ((looking-at (c-lang-const c-opt-class-key))
+		  `((objc-class-intro ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ;; ObjC method
-	       ((looking-at (c-lang-const c-opt-method-key))
-		`((objc-method-intro ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; @public, @private, etc
+		 ((looking-at (c-lang-const c-opt-protection-key))
+		  `((access-label ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ;; @property
-	       ((looking-at (c-lang-const c-opt-property-key))
-		`((objc-property-intro ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; ObjC method
+		 ((looking-at (c-lang-const c-opt-method-key))
+		  `((objc-method-intro ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ;; @end
-	       ((looking-at "@end")
-		`((objc-class-end ,(c-point 'boi))
-		  (topmost-intro ,(c-point 'bol))))
+		 ;; @property
+		 ((looking-at (c-lang-const c-opt-property-key))
+		  `((objc-property-intro ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
 
-	       ))
+		 ;; @end
+		 ((looking-at "@end")
+		  `((objc-class-end ,(c-point 'boi))
+		    (topmost-intro ,(c-point 'bol))))
+
+		 )))
 
       (message "found-syntax %S" found-syntax)
 
