@@ -91,10 +91,12 @@
 ;;     objc++ '("@interface" "@implementation" "@protocol"))
 
 (c-lang-defconst c-modifier-kwds
-  objc++ '("auto" "bycopy" "byref" "extern" "in" "inout" "oneway" "out" "static"))
+  objc++ '("auto" "bycopy" "byref" "extern" "in"
+	   "inout" "oneway" "out" "static"))
 
 (c-lang-defconst c-other-decl-kwds
-  objc++ '("@class" "@defs" "@end" "@property" "@dynamic" "@synthesize"
+  objc++ '("@class" "@defs" "@end"
+	   "@property" "@dynamic" "@synthesize"
 	   "@compatibility_alias"))
 
 (c-lang-defconst c-protection-kwds
@@ -102,7 +104,10 @@
 	   "@required" "@optional"))
 
 (c-lang-defconst c-type-list-kwds
-  objc++ '("@class"))
+  objc++ '("@class" "@protocol"))
+
+(c-lang-defconst c-ref-list-kwds
+  objc++ '("@import"))
 
 (c-lang-defconst c-paren-type-kwds
   objc++ '("@defs"))
@@ -134,6 +139,27 @@
 (c-lang-defconst c-opt-extra-label-key
   objc++ (c-make-keywords-re t (c-lang-const c-protection-kwds)))
 
+(c-lang-defconst c-opt-import-key
+  objc++ (c-make-keywords-re t (c-lang-const c-ref-list-kwds)))
+(c-lang-defvar c-opt-import-key (c-lang-const c-opt-import-key))
+
+(c-lang-defconst c-opt-forward-decl-key
+  objc++ (c-make-keywords-re t (c-lang-const c-type-list-kwds)))
+(c-lang-defvar c-opt-forward-decl-key (c-lang-const c-opt-forward-decl-key))
+
+(c-lang-defconst c-opt-class-key
+  objc++ (c-make-keywords-re t (c-lang-const c-class-decl-kwds)))
+(c-lang-defvar c-opt-class-key (c-lang-const c-opt-class-key))
+
+(c-lang-defconst c-opt-protection-key
+  objc++ (c-make-keywords-re t (c-lang-const c-protection-kwds)))
+(c-lang-defvar c-opt-protection-key (c-lang-const c-opt-protection-key))
+
+(c-lang-defconst c-opt-property-key
+  objc++ (c-make-keywords-re t
+	   '("@property" "@dynamic" "@synthesize")))
+(c-lang-defvar c-opt-property-key (c-lang-const c-opt-property-key))
+
 (c-lang-defconst c-opt-method-key
   objc++ (concat
 	  ;; TODO: Ought to use a better method than anchoring on bol.
@@ -147,15 +173,13 @@
 	  "\\(" (c-lang-const c-symbol-key) "\\)"))
 (c-lang-defvar c-opt-method-key (c-lang-const c-opt-method-key))
 
-(c-lang-defconst c-opt-class-key
-  ;; Special regexp to match the start of ObjC/ObjC++ classes
-  objc++ (c-make-keywords-re t (c-lang-const c-class-decl-kwds)))
-(c-lang-defvar c-opt-class-key (c-lang-const c-opt-class-key))
-
 (c-lang-defconst c-type-decl-end-used
   objc++ t)
 (c-lang-defvar c-type-decl-end-used (c-lang-const c-type-decl-end-used))
 
+
+(defun objc++-unsyntacticp ()
+  (c-in-literal nil t))
 
 ;; Objective-C & Objective-C++ add some defun-ish types.
 ;;
@@ -203,17 +227,35 @@
 ;;     ^ int (int arg1) { return 42; }
 
 (defun objc++-beginning-of-defun ()
-  "Move backward to beginning of an ObjC/ObjC++ defuns and fallback on
-`c-beginning-of-defun' if it fails."
+  "Move backward to beginning of the closest ObjC defun or C/C++ defun."
   (interactive)
-  (objc++-beginning-of-defun-1))
 
+  (let ((start (point))
+	objc-defun-found defun-found
+	objc-defun-pos defun-pos)
+
+    (setq objc-defun-found (objc++-beginning-of-defun-1)
+	  objc-defun-pos (point))
+
+    (goto-char start)
+
+    (setq defun-found (c-beginning-of-defun)
+	  defun-pos (point))
+
+    (if (and objc-defun-found defun-found)
+	(if (< (- start objc-defun-pos) (- start defun-pos))
+	    (goto-char objc-defun-pos))
+      (if objc-defun-found
+	  (goto-char objc-defun-pos)
+	defun-found))))
+
+;; move backwards to ObjC defun, if not found return nil
 (defun objc++-beginning-of-defun-1 ()
   (let ((start (point))
 	found)
     (while (and (not (bobp))
 		(not found))
-      ; use regexp search backwards unbounded & always move
+      ;; use regexp search backwards unbounded & always move
       (if (re-search-backward (c-lang-const c-opt-class-key) nil 'move)
 	  (cond
 	   ((c-in-literal nil t)
@@ -231,19 +273,34 @@
 	   (t
 	    (setq found t)))))
     (if (not found)
-	(progn
-	  (goto-char start)
-	  (c-beginning-of-defun)))))
+	(progn (goto-char start) nil)
+      t)))
 
 (defun objc++-end-of-defun ()
-  "Move forward to end of an ObjC/ObjC++ defuns and fallback on
-`c-end-of-defun' if it fails."
+  "Move forward to end of the closest ObjC defun or C/C++ defun."
   (interactive)
-  (objc++-end-of-defun-1))
+  (let ((start (point))
+	objc-defun-found defun-found
+	objc-defun-pos defun-pos)
 
+    (setq objc-defun-found (objc++-end-of-defun-1)
+	  objc-defun-pos (point))
+
+    (goto-char start)
+
+    (setq defun-found (c-end-of-defun)
+	  defun-pos (point))
+
+    (if (and objc-defun-found defun-found)
+	(if (< (- objc-defun-pos start) (- defun-pos start))
+	    (goto-char objc-defun-pos))
+      (if objc-defun-found
+	  (goto-char objc-defun-pos)
+	defun-found))))
+
+;; move forward to ObjC defun, if not found return nil
 (defun objc++-end-of-defun-1 ()
-  (unless (c-syntactic-re-search-forward "@end" nil t)
-    (c-end-of-defun)))
+  (c-syntactic-re-search-forward "@end" nil t))
 
 
 (defun objc++-forward-directive ()
@@ -324,8 +381,8 @@
 	;;   (c-put-c-type-property (1- (point)) 'c-decl-end)
 	;;   t)
 
-      ;;(c-clear-c-type-property start (point) 'c-decl-end)
-      nil)))
+	;;(c-clear-c-type-property start (point) 'c-decl-end)
+	nil)))
 
 (advice-add
  'c-forward-declarator
@@ -365,7 +422,6 @@
       (goto-char here)
       (apply orig-fun args))))
 
-
 (advice-add
  'c-just-after-func-arglist-p
  :around #'objc++-just-after-func-arglist-p)
@@ -381,7 +437,6 @@
 	 (not (objc++-forward-directive-1)))
       (apply orig-fun args))))
 
-
 (advice-add
  'c-guess-basic-syntax
  :around #'objc++-guess-basic-syntax-guard)
@@ -395,28 +450,91 @@
     (apply orig-fun args)))
 
 (defun objc++-guess-basic-syntax (orig-fun &rest args)
-  (cond
+  (save-excursion
+    (c-save-buffer-state
+	((start (point))
+	 found-syntax
+	 objc-defun-beg objc-defun-end objc-defun-kwd
+	 defun-beg defun-end defun-kwd)
+      (save-excursion
+	(goto-char (c-point 'boi))
+	(setq found-syntax
+	      (cond
 
-   ;; ObjC Method
-   ((save-excursion
-      (goto-char (c-point 'boi))
-      (looking-at c-opt-method-key))
-    `((objc-method-intro ,(c-point 'boi))))
+	       ;; @import AppKit;
+	       ((looking-at (c-lang-const c-opt-import-key))
+		`((objc-import-intro ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
 
-   ;; ObjC Method Continued
-   ((save-excursion
-      (goto-char (c-point 'boi))
-      (setq save-point (point))
-      (c-beginning-of-statement-1)
-      (when (looking-at c-opt-method-key)
-	(if (eq save-point (point))
-	    nil
-	  t)))
-    `((objc-method-args-cont ,(c-point 'bol))))
+	       ;; @class ForwardClassOne, ForwardClassTwo;
+	       ;; @protocol ForwardProtoOne, ForwardProtoTwo;
+	       ((looking-at (c-lang-const c-opt-forward-decl-key))
+		;; TODO: check @protocol() is not the operator form
+		`((objc-forward-decl-intro ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
 
-   (t
-    (apply orig-fun args))))
+	       ;; @interface ClassName
+	       ((looking-at (c-lang-const c-opt-class-key))
+		`((objc-class-intro ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
 
+	       ;; @public, @private, etc
+	       ((looking-at (c-lang-const c-opt-protection-key))
+		`((access-label ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
+
+	       ;; ObjC method
+	       ((looking-at (c-lang-const c-opt-method-key))
+		`((objc-method-intro ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
+
+	       ;; @property
+	       ((looking-at (c-lang-const c-opt-property-key))
+		`((objc-property-intro ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
+
+	       ;; @end
+	       ((looking-at "@end")
+		`((objc-class-end ,(c-point 'boi))
+		  (topmost-intro ,(c-point 'bol))))
+
+	       ))
+
+      (message "found-syntax %S" found-syntax)
+
+      (if (not found-syntax)
+	(save-excursion
+	  (if (objc++-beginning-of-defun-1)
+	      (setq objc-defun-beg (point)
+		    objc-defun-kwd (and
+				    (looking-at c-keywords-regexp)
+				    (c-keyword-sym (match-string 1)))
+		    objc-defun-end (and (objc++-end-of-defun-1) (point))))
+	  ;; (message "objc:\n beg=%S\n end=%S\n kwd=%S"
+	  ;; 	   objc-defun-beg objc-defun-end objc-defun-kwd)
+	  (goto-char start)
+	  (if (c-beginning-of-defun)
+	      (setq defun-beg (point)
+		    defun-kwd (and
+			       (looking-at c-keywords-regexp)
+			       (c-keyword-sym (match-string 1)))
+		    defun-end (and (c-end-of-defun) (point))))
+	  ;; (message "c++:\n beg=%S\n end=%S\n kwd=%S"
+	  ;; 	   defun-beg defun-end defun-kwd)
+	  (goto-char start)
+	  (if (not objc-defun-beg)
+	      (apply orig-fun args)
+	    (if (not (and defun-beg (>= objc-defun-beg defun-beg)))
+		(apply orig-fun args)
+	      (cond
+
+	       ;; NOTE: keeping this for now since we might want to
+	       ;; tag elements with the inclass syntatic element
+	       ;; symbol
+
+	       (t
+		(apply orig-fun args))))))
+	found-syntax)))))
 
 (defcustom objc++-font-lock-extra-types nil
   (c-make-font-lock-extra-types-blurb
@@ -532,6 +650,14 @@ names)."))
 
 (defvar objc++-mode-map
   (let ((map (c-make-inherited-keymap)))
+    (define-key map [remap beginning-of-defun]
+		#'objc++-beginning-of-defun)
+    (define-key map [remap end-of-defun]
+		#'objc++-end-of-defun)
+    (define-key map [remap c-beginning-of-defun]
+		#'objc++-beginning-of-defun)
+    (define-key map [remap c-end-of-defun]
+		#'objc++-end-of-defun)
     map)
   "Keymap used in `objc++-mode' buffers.")
 
