@@ -729,6 +729,12 @@ Key bindings:
   (c-init-language-vars objc++-mode)
   (c-common-init 'objc++-mode)
   ;;(setq-local c-doc-comment-style '((objc++-mode . ???)))
+
+  (setq-local c-macro-names-with-semicolon
+	      '("NS_HEADER_AUDIT_BEGIN"
+		"APPKIT_API_UNAVAILABLE_BEGIN_MACCATALYST"
+		"NS_ASSUME_NONNULL_BEGIN"))
+
   (run-mode-hooks 'c-mode-common-hook))
 
 ;;;###autoload
