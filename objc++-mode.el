@@ -320,6 +320,15 @@
 (defun objc++-end-of-defun-1 ()
   (c-syntactic-re-search-forward "@end" nil t))
 
+(defun objc++-beginning-of-statement ()
+  (interactive)
+  ;; cc-mode's interactive `c-beginning-of-statement' has a bug and
+  ;; the -1 variant does not
+  (c-beginning-of-statement-1))
+
+(defun objc++-end-of-statement ()
+  (interactive)
+  (c-end-of-statement))
 
 (defun objc++-forward-directive ()
   (interactive)
@@ -672,6 +681,8 @@ names)."))
 
 (defvar objc++-mode-map
   (let ((map (c-make-inherited-keymap)))
+
+    ;; remap defun movement
     (define-key map [remap beginning-of-defun]
 		#'objc++-beginning-of-defun)
     (define-key map [remap end-of-defun]
@@ -680,6 +691,17 @@ names)."))
 		#'objc++-beginning-of-defun)
     (define-key map [remap c-end-of-defun]
 		#'objc++-end-of-defun)
+
+    ;; rempap statement movement
+    (define-key map [remap beginning-of-statement]
+		#'objc++-beginning-of-statement)
+    (define-key map [remap end-of-statement]
+		#'objc++-end-of-statement)
+    (define-key map [remap c-beginning-of-statement]
+		#'objc++-beginning-of-statement)
+    (define-key map [remap c-end-of-statement]
+		#'objc++-end-of-statement)
+
     map)
   "Keymap used in `objc++-mode' buffers.")
 
