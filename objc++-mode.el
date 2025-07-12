@@ -326,7 +326,11 @@
   (interactive)
   ;; cc-mode's interactive `c-beginning-of-statement' has a bug and
   ;; the -1 variant does not
-  (c-beginning-of-statement-1))
+  (catch 'done
+    (while t
+      (c-beginning-of-statement-1)
+      (unless (or (eq (char-before) ?\() (eq (char-before) ?<)) (throw 'done nil))
+      (unless (c-go-up-list-backward) (throw 'done nil)))))
 
 (defun objc++-end-of-statement ()
   (interactive)
