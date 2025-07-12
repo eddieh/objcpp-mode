@@ -486,52 +486,54 @@
 	 objc-defun-beg objc-defun-end objc-defun-kwd
 	 defun-beg defun-end defun-kwd)
       (save-excursion
+
 	(save-excursion
-	  (goto-char (c-point 'boi))
-	  (setq found-syntax
-		(cond
+	  (unless found-syntax
+	    (goto-char (c-point 'boi))
+	    (setq found-syntax
+		  (cond
 
-		 ;; @import AppKit;
-		 ((looking-at (c-lang-const c-opt-import-key))
-		  `((objc-import-intro ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @import AppKit;
+		   ((looking-at (c-lang-const c-opt-import-key))
+		    `((objc-import-intro ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; @class ForwardClassOne, ForwardClassTwo;
-		 ((looking-at (c-lang-const c-opt-class-forward-decl-key))
-		  `((objc-forward-decl-intro ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @class ForwardClassOne, ForwardClassTwo;
+		   ((looking-at (c-lang-const c-opt-class-forward-decl-key))
+		    `((objc-forward-decl-intro ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; @protocol ForwardProtoOne, ForwardProtoTwo;
-		 ((looking-at (c-lang-const c-opt-protocol-forward-decl-key))
-		  `((objc-forward-decl-intro ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @protocol ForwardProtoOne, ForwardProtoTwo;
+		   ((looking-at (c-lang-const c-opt-protocol-forward-decl-key))
+		    `((objc-forward-decl-intro ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; @interface ClassName
-		 ((looking-at (c-lang-const c-opt-class-key))
-		  `((objc-class-intro ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @interface ClassName
+		   ((looking-at (c-lang-const c-opt-class-key))
+		    `((objc-class-intro ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; @public, @private, etc
-		 ((looking-at (c-lang-const c-opt-protection-key))
-		  `((access-label ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @public, @private, etc
+		   ((looking-at (c-lang-const c-opt-protection-key))
+		    `((access-label ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; ObjC method
-		 ((looking-at (c-lang-const c-opt-method-key))
-		  `((objc-method-intro ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; ObjC method
+		   ((looking-at (c-lang-const c-opt-method-key))
+		    `((objc-method-intro ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; @property
-		 ((looking-at (c-lang-const c-opt-property-key))
-		  `((objc-property-intro ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @property
+		   ((looking-at (c-lang-const c-opt-property-key))
+		    `((objc-property-intro ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 ;; @end
-		 ((looking-at "@end")
-		  `((objc-class-end ,(c-point 'boi))
-		    (topmost-intro ,(c-point 'bol))))
+		   ;; @end
+		   ((looking-at "@end")
+		    `((objc-class-end ,(c-point 'boi))
+		      (topmost-intro ,(c-point 'bol))))
 
-		 )))
+		   ))))
 
       (message "found-syntax %S" found-syntax)
 
