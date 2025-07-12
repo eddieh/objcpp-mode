@@ -61,7 +61,7 @@
   objc++ '("include" "import"))
 
 (c-lang-defconst c-operators
-  objc++ '("@selector" "@protocol" "@encode"))
+  objc++ '("@selector" "@protocol" "@encode" "@available"))
 
 (c-lang-defconst c-other-op-syntax-tokens
   objc++ (append '("#" "##"		; Used by cpp.
@@ -106,7 +106,9 @@
 (c-lang-defconst c-type-list-kwds
   objc++ '("@class" "@protocol"))
 
-(c-lang-defconst c-ref-list-kwds
+;; @import is not actually a "list"
+;;(c-lang-defconst c-ref-list-kwds
+(c-lang-defconst c-typeless-decl-kwds
   objc++ '("@import"))
 
 (c-lang-defconst c-paren-type-kwds
