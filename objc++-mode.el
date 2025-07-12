@@ -486,6 +486,7 @@
     (c-save-buffer-state
 	((start (point))
 	 found-syntax
+	 stmt-beg maybe-stmt-end
 	 objc-defun-beg objc-defun-end objc-defun-kwd
 	 defun-beg defun-end defun-kwd)
       (save-excursion
@@ -535,6 +536,52 @@
 		   ((looking-at "@end")
 		    `((objc-class-end ,(c-point 'boi))
 		      (topmost-intro ,(c-point 'bol))))
+
+		   ))))
+
+	(save-excursion
+	  (unless found-syntax
+	    (c-beginning-of-statement-1)
+	    (setq stmt-beg (point))
+	    (setq found-syntax
+		  (cond
+
+		   ;; @interface ClassName
+		   ((looking-at (c-lang-const c-opt-class-key))
+		    (save-excursion
+		      (objc++-forward-directive-1)
+		      (setq maybe-stmt-end (point))
+		      (when (< start maybe-stmt-end)
+			;; class declaration continued
+			`((objc-class-cont ,(c-point 'boi))))
+		      ;; inside class
+		      `(;(inclass ,(c-point 'boi))
+			(topmost-intro ,(c-point 'bol)))))
+
+		   ;; ;; @public, @private, etc
+		   ;; ((looking-at (c-lang-const c-opt-protection-key))
+		   ;;  `((access-label ,(c-point 'boi))
+		   ;;    (topmost-intro ,(c-point 'bol))))
+
+		   ;; ;; ObjC method
+		   ;; ((looking-at (c-lang-const c-opt-method-key))
+		   ;;  `((objc-method-intro ,(c-point 'boi))
+		   ;;    (topmost-intro ,(c-point 'bol))))
+
+		   ;; ;; @property
+		   ;; ((looking-at (c-lang-const c-opt-property-key))
+		   ;;  `((objc-property-intro ,(c-point 'boi))
+		   ;;    (topmost-intro ,(c-point 'bol))))
+
+
+		   ;; @end
+		   ((looking-at "@end")
+		    (save-excursion
+		       (objc++-forward-directive-1)
+		       (setq maybe-stmt-end (point))
+		       (when (> start maybe-stmt-end)
+			;; after @end
+			`((topmost-intro ,(c-point 'bol))))))
 
 		   ))))
 
