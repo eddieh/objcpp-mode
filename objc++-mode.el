@@ -545,7 +545,7 @@
 
 	(save-excursion
 	  (unless found-syntax
-	    (c-beginning-of-statement-1)
+	    (objc++-beginning-of-statement)
 	    (setq stmt-beg (point))
 	    (setq found-syntax
 		  (cond
@@ -555,12 +555,12 @@
 		    (save-excursion
 		      (objc++-forward-directive-1)
 		      (setq maybe-stmt-end (point))
-		      (when (< start maybe-stmt-end)
-			;; class declaration continued
-			`((objc-class-cont ,(c-point 'boi))))
-		      ;; inside class
-		      `(;(inclass ,(c-point 'boi))
-			(topmost-intro ,(c-point 'bol)))))
+		      (or (when (< start maybe-stmt-end)
+			    ;; class declaration continued
+			    `((objc-class-cont ,(c-point 'boi))))
+			  ;; inside class
+			  `(;(inclass ,(c-point 'boi))
+			    (topmost-intro ,(c-point 'bol))))))
 
 		   ;; ;; @public, @private, etc
 		   ;; ((looking-at (c-lang-const c-opt-protection-key))
