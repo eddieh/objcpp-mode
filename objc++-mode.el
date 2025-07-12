@@ -204,6 +204,37 @@
   objc++ t)
 (c-lang-defvar c-type-decl-end-used (c-lang-const c-type-decl-end-used))
 
+(defun objc++-nearest-backward (fn1 fn2)
+  (let ((start (point))
+	one-found two-found
+	one-pos two-pos)
+    (setq one-found (funcall fn1)
+	  one-pos (point))
+    (goto-char start)
+    (setq two-found (funcall fn2)
+	  two-pos (point))
+    (if (and one-found two-found)
+	(if (< (- start one-pos) (- start two-pos))
+	    (goto-char one-pos))
+      (if one-found
+	  (goto-char one-pos)
+	two-found))))
+
+(defun objc++-nearest-forward (fn1 fn2)
+    (let ((start (point))
+	one-found two-found
+	one-pos two-pos)
+    (setq one-found (funcall fn1)
+	  one-pos (point))
+    (goto-char start)
+    (setq two-found (funcall fn2)
+	  two-pos (point))
+    (if (and one-found two-found)
+	(if (< (- one-pos start) (- two-pos start))
+	    (goto-char one-pos))
+      (if one-found
+	  (goto-char one-pos)
+	two-found))))
 
 (defun objc++-unsyntacticp ()
   "Checks if point is in a string or comment."
@@ -326,15 +357,29 @@
   (interactive)
   ;; cc-mode's interactive `c-beginning-of-statement' has a bug and
   ;; the -1 variant does not
-  (catch 'done
-    (while t
-      (c-beginning-of-statement-1)
-      (unless (or (eq (char-before) ?\() (eq (char-before) ?<)) (throw 'done nil))
-      (unless (c-go-up-list-backward) (throw 'done nil)))))
+  (objc++-nearest-backward
+   #'objc++-beginning-of-defun-1
+   (lambda ()
+     (let (start)
+       (setq start (point))
+       (catch 'done
+	 (while t
+	   (c-beginning-of-statement-1)
+	   (when (eq start (point))
+	     (c-backward-syntactic-ws) t)
+	   (unless (or
+		    (eq (char-before) ?\()
+		    (eq (char-before) ?<)
+		    (eq (char-before) ?{))
+	     (throw 'done t))
+	   (unless (c-go-up-list-backward) (throw 'done t))))))))
 
 (defun objc++-end-of-statement ()
   (interactive)
-  (c-end-of-statement))
+  (objc++-nearest-forward
+   #'objc++-end-of-defun-1
+   (lambda ()
+     (or (c-end-of-statement) t))))
 
 (defconst objc++-simple-directive-key
   (eval-when-compile
