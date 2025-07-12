@@ -332,6 +332,19 @@
   (interactive)
   (c-end-of-statement))
 
+(defconst objc++-simple-directive-key
+  (eval-when-compile
+    (c-make-keywords-re t
+      (append
+       (c-lang-const c-protection-kwds objc++) '("@end"))
+      'objc++-mode)))
+
+(defun objc++-forward-simple-directive ()
+    "Move forward over class access directives, protocol @optional &
+@required directives and @end."
+    (and (looking-at objc++-simple-directive-key)
+	 (goto-char (match-end 1))))
+
 (defun objc++-forward-directive ()
   (interactive)
   (objc++-forward-directive-1))
@@ -351,7 +364,7 @@
 
   (let ((start (point))
 	start-char
-	;; (c-promote-possible-types t)
+	(c-promote-possible-types t)
 	lim
 	;; Turn off recognition of angle bracket arglists while parsing
 	;; types here since the protocol reference list might then be
@@ -359,26 +372,13 @@
 	c-recognize-<>-arglists)
 
     (if (or
-	 (when (looking-at
-		(eval-when-compile
-		  (c-make-keywords-re t
-		    (append (c-lang-const c-protection-kwds objc++)
-			    '("@end"))
-		    'objc++-mode)))
-	   (goto-char (match-end 1))
-	   t)
+	 (objc++-forward-simple-directive)
 
 	 (and
-	  (looking-at
-	   (eval-when-compile
-	     (c-make-keywords-re t
-	       '("@interface" "@implementation" "@protocol")
-	       'objc++-mode)))
+	  (looking-at (c-lang-const c-opt-class-key))
 
-	  ;; Handle the name of the class itself.
+	  ;; Fowward keyword and class-name
 	  (progn
-            ;; (c-forward-token-2) ; 2006/1/13 This doesn't move if the token's
-            ;; at EOB.
 	    (goto-char (match-end 0))
 	    (setq lim (point))
 	    (c-skip-ws-forward)
@@ -396,7 +396,7 @@
 		(forward-char)
 		(c-forward-syntactic-ws)))
 
-	    ;; Look for a protocol reference list.
+	    ;; Look for a < protocol-reference-list >
 	    (if (eq (char-after) ?<)
 		(let ((c-recognize-<>-arglists t)
 		      (c-parse-and-markup-<>-arglists t)
@@ -404,14 +404,17 @@
 		  (c-forward-<>-arglist t))
 	      t))))
 
-	;; (progn
-	;;   (c-backward-syntactic-ws lim)
-	;;   (c-clear-c-type-property start (1- (point)) 'c-decl-end)
-	;;   (c-put-c-type-property (1- (point)) 'c-decl-end)
-	;;   t)
+	(c-backward-syntactic-ws lim)
 
-	;;(c-clear-c-type-property start (point) 'c-decl-end)
-	nil)))
+      ;; (progn
+      ;;   (c-backward-syntactic-ws lim)
+      ;;   (c-clear-c-type-property start (1- (point)) 'c-decl-end)
+      ;;   (c-put-c-type-property (1- (point)) 'c-decl-end)
+      ;;   t)
+
+      ;; (c-clear-c-type-property start (point) 'c-decl-end)
+
+      nil)))
 
 (advice-add
  'c-forward-declarator
