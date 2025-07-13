@@ -68,7 +68,6 @@
 		   "+" "-")
 		 (c-lang-const c-other-op-syntax-tokens)))
 
-
 (c-lang-defconst c-literal-start-regexp
   ;; Regexp to match the start of comments and string literals.
   objc++ (concat (c-lang-const c-comment-start-regexp)
@@ -204,38 +203,6 @@
   objc++ t)
 (c-lang-defvar c-type-decl-end-used (c-lang-const c-type-decl-end-used))
 
-(defun objc++-nearest-backward (fn1 fn2)
-  (let ((start (point))
-	one-found two-found
-	one-pos two-pos)
-    (setq one-found (funcall fn1)
-	  one-pos (point))
-    (goto-char start)
-    (setq two-found (funcall fn2)
-	  two-pos (point))
-    (if (and one-found two-found)
-	(if (< (- start one-pos) (- start two-pos))
-	    (goto-char one-pos))
-      (if one-found
-	  (goto-char one-pos)
-	two-found))))
-
-(defun objc++-nearest-forward (fn1 fn2)
-    (let ((start (point))
-	one-found two-found
-	one-pos two-pos)
-    (setq one-found (funcall fn1)
-	  one-pos (point))
-    (goto-char start)
-    (setq two-found (funcall fn2)
-	  two-pos (point))
-    (if (and one-found two-found)
-	(if (< (- one-pos start) (- two-pos start))
-	    (goto-char one-pos))
-      (if one-found
-	  (goto-char one-pos)
-	two-found))))
-
 (defun objc++-nearest-backward-fn (&rest fn-list)
   (let ((start (point))
 	found pos pos-list nearest)
@@ -244,6 +211,23 @@
 	(push `(,(if (funcall fn)
 		     (- start (point))
 		   (progn (beginning-of-buffer) (- start (point))))
+		,(point) ,(if (symbolp fn) (symbol-name fn) "(anon)"))
+	      pos-list)))
+    ;;(message "%S" pos-list)
+    (setq nearest (car pos-list))
+    (dolist (n pos-list nearest)
+      (if (< (car n) (car nearest))
+	  (setq nearest n)))
+    (goto-char (cadr nearest))))
+
+(defun objc++-nearest-forward-fn (&rest fn-list)
+  (let ((start (point))
+	found pos pos-list nearest)
+    (dolist (fn fn-list pos-list)
+      (save-excursion
+	(push `(,(if (funcall fn)
+		     (- (point) start)
+		   (progn (end-of-buffer) (- (point) start)))
 		,(point) ,(if (symbolp fn) (symbol-name fn) "(anon)"))
 	      pos-list)))
     ;;(message "%S" pos-list)
@@ -329,25 +313,9 @@
 (defun objc++-beginning-of-defun ()
   "Move backward to beginning of the closest ObjC defun or C/C++ defun."
   (interactive)
-
-  (let ((start (point))
-	objc-defun-found defun-found
-	objc-defun-pos defun-pos)
-
-    (setq objc-defun-found (objc++-beginning-of-defun-1)
-	  objc-defun-pos (point))
-
-    (goto-char start)
-
-    (setq defun-found (c-beginning-of-defun)
-	  defun-pos (point))
-
-    (if (and objc-defun-found defun-found)
-	(if (< (- start objc-defun-pos) (- start defun-pos))
-	    (goto-char objc-defun-pos))
-      (if objc-defun-found
-	  (goto-char objc-defun-pos)
-	defun-found))))
+  (objc++-nearest-backward-fn
+   #'objc++-beginning-of-defun-1
+   #'c-beginning-of-defun))
 
 ;; move backwards to ObjC defun, if not found return nil
 (defun objc++-beginning-of-defun-1 ()
@@ -371,24 +339,9 @@
 (defun objc++-end-of-defun ()
   "Move forward to end of the closest ObjC defun or C/C++ defun."
   (interactive)
-  (let ((start (point))
-	objc-defun-found defun-found
-	objc-defun-pos defun-pos)
-
-    (setq objc-defun-found (objc++-end-of-defun-1)
-	  objc-defun-pos (point))
-
-    (goto-char start)
-
-    (setq defun-found (c-end-of-defun)
-	  defun-pos (point))
-
-    (if (and objc-defun-found defun-found)
-	(if (< (- objc-defun-pos start) (- defun-pos start))
-	    (goto-char objc-defun-pos))
-      (if objc-defun-found
-	  (goto-char objc-defun-pos)
-	defun-found))))
+  (objc++-nearest-forward-fn
+   #'objc++-end-of-defun-1
+   #'c-end-of-defun))
 
 ;; move forward to ObjC defun, if not found return nil
 (defun objc++-end-of-defun-1 ()
@@ -475,7 +428,7 @@
 
 (defun objc++-end-of-statement ()
   (interactive)
-  (objc++-nearest-forward
+  (objc++-nearest-forward-fn
    #'objc++-end-of-defun-1
    (lambda ()
      (or (c-end-of-statement) t))))
