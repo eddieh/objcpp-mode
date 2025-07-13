@@ -236,9 +236,50 @@
 	  (goto-char one-pos)
 	two-found))))
 
-(defun objc++-unsyntacticp ()
+(defun objc++-nearest-backward-fn (&rest fn-list)
+  (let ((start (point))
+	found pos pos-list nearest)
+    (dolist (fn fn-list pos-list)
+      (save-excursion
+	(push `(,(if (funcall fn)
+		     (- start (point))
+		   (progn (beginning-of-buffer) (- start (point))))
+		,(point) ,(if (symbolp fn) (symbol-name fn) "(anon)"))
+	      pos-list)))
+    ;;(message "%S" pos-list)
+    (setq nearest (car pos-list))
+    (dolist (n pos-list nearest)
+      (if (< (car n) (car nearest))
+	  (setq nearest n)))
+    (goto-char (cadr nearest))))
+
+
+(defun objc++-unsyntactic-p ()
   "Checks if point is in a string or comment."
   (c-in-literal nil t))
+
+(defun objc++-in-property-def-p ()
+  ;; Return nil if we aren't in a property definition, otherwise the
+  ;; position of the initial @.
+  ;;
+  ;; This function might do hidden buffer changes.
+  (save-excursion
+    (back-to-indentation)
+    (and c-opt-property-key
+	 (looking-at c-opt-property-key)
+	 (point))))
+
+(defun objc++-in-method-def-p ()
+  ;; Return nil if we aren't in a method definition, otherwise the
+  ;; position of the initial [+-].
+  ;;
+  ;; This function might do hidden buffer changes.
+  (save-excursion
+    (beginning-of-line)
+    (and c-opt-method-key
+	 (looking-at c-opt-method-key)
+	 (point))))
+
 
 ;; Objective-C & Objective-C++ add some defun-ish types.
 ;;
@@ -317,7 +358,7 @@
       ;; use regexp search backwards unbounded & always move
       (if (re-search-backward (c-lang-const c-opt-class-key) nil 'move)
 	  (cond
-	   ((objc++-unsyntacticp)
+	   ((objc++-unsyntactic-p)
 	    (c-backward-syntactic-ws))
 	   ((looking-at (c-lang-const c-opt-protocol-op-key)))
 	   ((looking-at (c-lang-const c-opt-protocol-forward-decl-key)))
@@ -353,20 +394,75 @@
 (defun objc++-end-of-defun-1 ()
   (c-syntactic-re-search-forward "@end" nil t))
 
+(defun objc++-beginning-of-property ()
+  (let ((start (point))
+	found)
+    (while (and (not (bobp))
+		(not found))
+      ;; use regexp search backwards unbounded & always move
+      (if (re-search-backward (c-lang-const c-opt-property-key) nil 'move)
+	  (cond
+	   ((objc++-unsyntactic-p) (c-backward-syntactic-ws))
+	   (t (setq found t)))))
+    (if (not found)
+	(progn (goto-char start) nil)
+      t)))
+
+(defun objc++-beginning-of-@end ()
+  (let ((start (point))
+	found)
+    (while (and (not (bobp))
+		(not found))
+      ;; use regexp search backwards unbounded & always move
+      (if (re-search-backward "@end" nil 'move)
+	  (cond
+	   ((objc++-unsyntactic-p) (c-backward-syntactic-ws))
+	   (t (setq found t)))))
+    (if (not found)
+	(progn (goto-char start) nil)
+      t)))
+
+;; Need to handle property follows class-intro
+;;
+;;     @interface Object : Super
+;;     @property String *prop;
+;;     @end
+;;
+;;                            ^
+;;
+;; Need to handle inside a paren like part of a method or property
+;; with spaces
+;;
+;;     - (void)method:(     String *)arg
+;;
+;;                    ^-------------^
+;;
+;;     @property (     readonly   ) String *property;
+;;
+;;               ^----------------^
+;;
+;; Need to handle @end as a statement when class-like is empty
+;;
+;;     @interface Object : Super
+;;     @end
+;;
+;;         ^
 (defun objc++-beginning-of-statement ()
   (interactive)
-  ;; cc-mode's interactive `c-beginning-of-statement' has a bug and
-  ;; the -1 variant does not
-  (objc++-nearest-backward
+
+  (objc++-nearest-backward-fn
    #'objc++-beginning-of-defun-1
+   #'objc++-beginning-of-property
+   #'objc++-beginning-of-@end
    (lambda ()
      (let (start)
        (setq start (point))
        (catch 'done
-	 (while t
+	 (while (not (bobp))
 	   (c-beginning-of-statement-1)
 	   (when (eq start (point))
 	     (c-backward-syntactic-ws) t)
+	   ;; (c-at-statement-start-p)
 	   (unless (or
 		    (eq (char-before) ?\()
 		    (eq (char-before) ?<)
