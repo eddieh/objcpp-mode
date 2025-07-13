@@ -460,9 +460,12 @@
        (catch 'done
 	 (while (not (bobp))
 	   (c-beginning-of-statement-1)
-	   (when (eq start (point))
+	   (when (and
+		  (not (looking-at c-opt-method-key))
+		  (or
+		   (eq start (point))
+		   (not (c-at-statement-start-p))))
 	     (c-backward-syntactic-ws) t)
-	   ;; (c-at-statement-start-p)
 	   (unless (or
 		    (eq (char-before) ?\()
 		    (eq (char-before) ?<)
@@ -703,10 +706,14 @@
 			  `(;(inclass ,(c-point 'boi))
 			    (topmost-intro ,(c-point 'bol))))))
 
-		   ;; ;; @public, @private, etc
+		   ;; ;; "@private" "@protected" "@package" "@public"
+		   ;; ;; assume inside class def brace list { @public ... }
 		   ;; ((looking-at (c-lang-const c-opt-protection-key))
 		   ;;  `((access-label ,(c-point 'boi))
 		   ;;    (topmost-intro ,(c-point 'bol))))
+
+		   ;; ;; "@required" "@optional"
+		   ;; ;; assume inside a protocol def
 
 		   ;; ;; ObjC method
 		   ;; ((looking-at (c-lang-const c-opt-method-key))
