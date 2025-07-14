@@ -77,10 +77,9 @@
 		   "\"")))
 (c-lang-defvar c-literal-start-regexp (c-lang-const c-literal-start-regexp))
 
-
 (c-lang-defconst c-primitive-type-kwds
   objc++ (append
-	  '("id" "Class" "SEL" "IMP" "BOOL")
+	  '("id" "Class" "SEL" "IMP" "BOOL" "instancetype")
 	  (c-lang-const c-primitive-type-kwds)))
 
 (c-lang-defconst c-class-decl-kwds
@@ -91,7 +90,38 @@
 
 (c-lang-defconst c-modifier-kwds
   objc++ '("auto" "bycopy" "byref" "extern" "in"
-	   "inout" "oneway" "out" "static"))
+	   "inout" "oneway" "out" "static"
+
+	   ;; ObjC property attributes
+	   "assign" "atomic" "class" "copy" "direct"
+	   "getter" "nonatomic" "nonnull" "null_resettable"
+	   "null_unspecified" "nullable" "readonly"
+	   "readwrite" "retain" "setter" "strong"
+	   "unsafe_unretained" "weak"
+
+	   ;; Automatic Reference Counting (ARC) ownership qualifiers
+	   "__autoreleasing" "__strong"
+	   "__unsafe_unretained" "__weak"
+
+	   ;; ARC bridge casts
+	   "__bridge" "__bridge_retained"
+	   "__bridge_transfer"
+
+	   ;; Block storage qualifier
+	   "__block"
+
+	   ;; Nullability qualifiers
+	   "_Nonnull" "_Nullable"
+	   "_Nullable_result" "_Null_unspecified"
+
+	   ;; Other qualifiers
+	   "_Noreturn" "_Atomic"
+
+	   ))
+
+(c-lang-defconst c-typeof-kwds
+  objc++ '("alignof" "offsetof" "sizeof"
+	   "typeof" "typeof_unqual"))
 
 (c-lang-defconst c-other-decl-kwds
   objc++ '("@class" "@defs" "@end"
@@ -115,6 +145,9 @@
 
 (c-lang-defconst c-<>-type-kwds
   objc++ '("id"))
+
+(c-lang-defconst c-inside-<>-type-kwds
+  objc++ '("__kindof"))
 
 (c-lang-defconst c-block-stmt-1-kwds
   objc++ '("@finally" "@try" "@autoreleasepool"))
