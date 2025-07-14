@@ -910,8 +910,11 @@ Key bindings:
 
   (setq-local c-macro-names-with-semicolon
 	      '("NS_HEADER_AUDIT_BEGIN"
+		"NS_HEADER_AUDIT_END"
 		"APPKIT_API_UNAVAILABLE_BEGIN_MACCATALYST"
-		"NS_ASSUME_NONNULL_BEGIN"))
+		"API_UNAVAILABLE_END"
+		"NS_ASSUME_NONNULL_BEGIN"
+		"NS_ASSUME_NONNULL_END"))
 
   (run-mode-hooks 'c-mode-common-hook))
 
