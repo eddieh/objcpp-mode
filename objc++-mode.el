@@ -258,6 +258,82 @@
 
 	   (t nil)))))))
 
+(defun objc++-font-lock-method (limit)
+  ;; Assuming the point is after the + or - that starts an Objective-C
+  ;; method declaration, fontify it.  This must be done before normal
+  ;; casts, declarations and labels are fontified since they will get
+  ;; false matches in these things.
+  ;;
+  ;; This function might do hidden buffer changes.
+
+  (c-fontify-types-and-refs
+      ((first t)
+       (c-promote-possible-types t)
+       (c-recognize-<>-arglists t))
+
+    (while (and
+	    (progn
+	      (c-forward-syntactic-ws)
+
+	      ;; An optional method type.
+	      (if (eq (char-after) ?\()
+		  (progn
+		    (forward-char)
+		    (c-forward-syntactic-ws)
+		    (c-forward-type)
+		    ;; TODO: get type paramaters working
+		    ;; (c-font-lock-<>-arglists limit)
+		    (prog1 (c-go-up-list-forward)
+		      (c-forward-syntactic-ws)))
+		t))
+
+	    ;; The name.  The first time it's the first part of
+	    ;; the function name, the rest of the time it's an
+	    ;; argument name.
+	    (looking-at c-symbol-key)
+	    (progn
+	      (goto-char (match-end 0))
+	      (c-put-font-lock-face (match-beginning 0)
+				    (point)
+				    (if first
+					'font-lock-function-name-face
+				      'font-lock-variable-name-face))
+	      (c-forward-syntactic-ws)
+
+	      ;; Another optional part of the function name.
+	      (when (looking-at c-symbol-key)
+		(goto-char (match-end 0))
+		(c-put-font-lock-face (match-beginning 0)
+				      (point)
+				      'font-lock-function-name-face)
+		(c-forward-syntactic-ws))
+
+	      ;; There's another argument if a colon follows.
+	      (eq (char-after) ?:)))
+      (forward-char)
+      (setq first nil))))
+
+(defun objc++-font-lock-methods (limit)
+  ;; Fontify method declarations in Objective-C.  Nil is always
+  ;; returned.
+  ;;
+  ;; This function might do hidden buffer changes.
+
+  (let (;; The font-lock package in Emacs is known to clobber
+	;; `parse-sexp-lookup-properties' (when it exists).
+	(parse-sexp-lookup-properties
+	 (cc-eval-when-compile
+	   (boundp 'parse-sexp-lookup-properties))))
+
+    (c-find-decl-spots
+     limit
+     "[-+]"
+     nil
+     (lambda (_match-pos _inside-macro &optional _top-level)
+       (forward-char)
+       (objc++-font-lock-method limit))))
+  nil)
+
 (c-lang-defconst c-cpp-matchers
   objc++ (append
           ;; Merge with cc-mode defaults - enables us to add more
@@ -306,12 +382,45 @@
 
 (c-lang-defconst c-simple-decl-matchers
   objc++ (append
+
+	  ;; Objective-C methods.
+	  `((,(c-lang-const c-opt-method-key)
+	     (,(byte-compile
+		(lambda (limit)
+		  (let (;; The font-lock package in Emacs is known to clobber
+			;; `parse-sexp-lookup-properties' (when it exists).
+			(parse-sexp-lookup-properties
+			 (cc-eval-when-compile
+			   (boundp 'parse-sexp-lookup-properties))))
+		    (save-restriction
+		      (narrow-to-region (point-min) limit)
+		      (objc++-font-lock-method)))
+		  nil))
+	      (goto-char (match-end 1)))))
+
 	  ;; Merge with cc-mode defaults - enables us to add more
 	  ;; later
 	  (c-lang-const c-simple-decl-matchers)))
 
 (c-lang-defconst c-complex-decl-matchers
   objc++ (append
+
+	  ;; Fontify method declarations in Objective-C, but first we
+	  ;; have to put the `c-decl-end' `c-type' property on all the
+	  ;; @-style directives that haven't been handled in
+	  ;; `c-basic-matchers-before'.
+	  `(,(c-make-font-lock-search-function
+	      (c-make-keywords-re t
+		;; Exclude "@class" since that directive ends with a
+		;; semicolon anyway.
+		(delete "@class"
+			(append (c-lang-const c-protection-kwds)
+				(c-lang-const c-other-decl-kwds)
+				nil)))
+	      '((c-put-char-property (1- (match-end 1))
+				     'c-type 'c-decl-end)))
+	    objc++-font-lock-methods)
+
 	  ;; Merge with cc-mode defaults - enables us to add more
 	  ;; later
 	  (c-lang-const c-complex-decl-matchers)))
@@ -1025,7 +1134,7 @@ Key bindings:
 		     ;; (message "used for init debugging")
 		     (c-update-modeline))
 
-  ;; (setq-local debug-on-error t)
+  (setq-local debug-on-error t)
 
   (c-initialize-cc-mode t)
   (setq abbrev-mode t)
