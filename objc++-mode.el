@@ -441,10 +441,10 @@
       'objc++-mode)))
 
 (defun objc++-forward-simple-directive ()
-    "Move forward over class access directives, protocol @optional &
+  "Move forward over class access directives, protocol @optional &
 @required directives and @end."
-    (and (looking-at objc++-simple-directive-key)
-	 (goto-char (match-end 1))))
+  (and (looking-at objc++-simple-directive-key)
+       (goto-char (match-end 1))))
 
 (defun objc++-forward-directive ()
   (interactive)
@@ -586,145 +586,150 @@
   (save-excursion
     (c-save-buffer-state
 	((start (point))
-	 found-syntax
-	 stmt-beg maybe-stmt-end
-	 objc-defun-beg objc-defun-end objc-defun-kwd
-	 defun-beg defun-end defun-kwd)
-      (save-excursion
+	 stmt-beg maybe-stmt-end maybe-next-stmt-beg)
+      (or
 
-	(save-excursion
-	  (unless found-syntax
-	    (goto-char (c-point 'boi))
-	    (setq found-syntax
-		  (cond
+       (save-excursion
+	 (goto-char (c-point 'boi))
+	 (cond
 
-		   ;; @import AppKit;
-		   ((looking-at (c-lang-const c-opt-import-key))
-		    `((objc-import-intro ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @import AppKit;
+	  ((looking-at (c-lang-const c-opt-import-key))
+	   `((objc-import-intro ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; @class ForwardClassOne, ForwardClassTwo;
-		   ((looking-at (c-lang-const c-opt-class-forward-decl-key))
-		    `((objc-forward-decl-intro ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @class ForwardClassOne, ForwardClassTwo;
+	  ((looking-at (c-lang-const c-opt-class-forward-decl-key))
+	   `((objc-forward-decl-intro ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; @protocol ForwardProtoOne, ForwardProtoTwo;
-		   ((looking-at (c-lang-const c-opt-protocol-forward-decl-key))
-		    `((objc-forward-decl-intro ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @protocol ForwardProtoOne, ForwardProtoTwo;
+	  ((looking-at (c-lang-const c-opt-protocol-forward-decl-key))
+	   `((objc-forward-decl-intro ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; @interface ClassName
-		   ((looking-at (c-lang-const c-opt-class-key))
-		    `((objc-class-intro ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @interface ClassName
+	  ((looking-at (c-lang-const c-opt-class-key))
+	   `((objc-class-intro ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; @public, @private, etc
-		   ((looking-at (c-lang-const c-opt-protection-key))
-		    `((access-label ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @public, @private, etc
+	  ((looking-at (c-lang-const c-opt-protection-key))
+	   `((access-label ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; ObjC method
-		   ((looking-at (c-lang-const c-opt-method-key))
-		    `((objc-method-intro ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; ObjC method
+	  ((looking-at (c-lang-const c-opt-method-key))
+	   `((objc-method-intro ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; @property
-		   ((looking-at (c-lang-const c-opt-property-key))
-		    `((objc-property-intro ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @property
+	  ((looking-at (c-lang-const c-opt-property-key))
+	   `((objc-property-intro ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ;; @end
-		   ((looking-at "@end")
-		    `((objc-class-end ,(c-point 'boi))
-		      (topmost-intro ,(c-point 'bol))))
+	  ;; @end
+	  ((looking-at "@end")
+	   `((objc-class-end ,(c-point 'boi))
+	     (topmost-intro ,(c-point 'bol))))
 
-		   ))))
+	  ))
 
-	(save-excursion
-	  (unless found-syntax
-	    (objc++-beginning-of-statement)
-	    (setq stmt-beg (point))
-	    (setq found-syntax
-		  (cond
+       (save-excursion
+	 (objc++-beginning-of-statement)
+	 (setq stmt-beg (point))
+	 (cond
 
-		   ;; @interface ClassName
-		   ((looking-at (c-lang-const c-opt-class-key))
-		    (save-excursion
-		      (objc++-forward-directive-1)
-		      (setq maybe-stmt-end (point))
-		      (or (when (< start maybe-stmt-end)
-			    ;; class declaration continued
-			    `((objc-class-cont ,(c-point 'boi))))
-			  ;; inside class
-			  `(;(inclass ,(c-point 'boi))
-			    (topmost-intro ,(c-point 'bol))))))
+	  ;; @interface ClassName
+	  ((looking-at (c-lang-const c-opt-class-key))
+	   (save-excursion
+	     (objc++-forward-directive-1)
+	     (setq maybe-stmt-end (point))
+	     (or (when (< start maybe-stmt-end)
+		   ;; class declaration continued
+		   `((objc-class-cont ,(c-point 'bol))))
+		 ;; inside class
+		 `(;(inclass ,(c-point 'boi))
+		   (topmost-intro ,(c-point 'bol))))))
 
-		   ;; ;; "@private" "@protected" "@package" "@public"
-		   ;; ;; assume inside class def brace list { @public ... }
-		   ;; ((looking-at (c-lang-const c-opt-protection-key))
-		   ;;  `((access-label ,(c-point 'boi))
-		   ;;    (topmost-intro ,(c-point 'bol))))
+	  ;; ;; "@private" "@protected" "@package" "@public"
+	  ;; ;; assume inside class def brace list { @public ... }
+	  ;; ((looking-at (c-lang-const c-opt-protection-key))
+	  ;;  `((access-label ,(c-point 'boi))
+	  ;;    (topmost-intro ,(c-point 'bol))))
+	  ;; ;; "@required" "@optional"
+	  ;; ;; assume inside a protocol def
 
-		   ;; ;; "@required" "@optional"
-		   ;; ;; assume inside a protocol def
+	  ;; ObjC method
+	  ((looking-at (c-lang-const c-opt-method-key))
+	   (save-excursion
+	     (objc++-end-of-statement)
+	     (setq maybe-stmt-end (point))
 
-		   ;; ;; ObjC method
-		   ;; ((looking-at (c-lang-const c-opt-method-key))
-		   ;;  `((objc-method-intro ,(c-point 'boi))
-		   ;;    (topmost-intro ,(c-point 'bol))))
+	     (or
+	      (when (< start maybe-stmt-end)
+		(objc++-beginning-of-statement)
+		(setq maybe-next-stmt-beg (point))
 
-		   ;; ;; @property
-		   ;; ((looking-at (c-lang-const c-opt-property-key))
-		   ;;  `((objc-property-intro ,(c-point 'boi))
-		   ;;    (topmost-intro ,(c-point 'bol))))
+		(or
+		 (when (not (eq stmt-beg maybe-next-stmt-beg))
+		   `((objc-method-args-cont ,(c-point 'bol))
+		     (unterminated-method-decl 0)))
+
+		 (when (< start maybe-stmt-end)
+		   (save-excursion
+		     (c-forward-syntactic-ws (c-point 'bonl))
+		     (if (eq (char-after) ?{)
+			 `((objc-method-args-cont ,(c-point 'bol))
+			   (unterminated-method-def 0))
+		       `((objc-method-args-cont ,(c-point 'bol))
+			 (method-decl-or-def 0)))))))
+
+	      (when (>= start maybe-stmt-end)
+		(or
+		 (save-excursion
+		   (goto-char start)
+		   (goto-char (c-point 'bol))
+		   (c-forward-syntactic-ws (c-point 'boi))
+		   (when (eq (char-after) ?{)
+		     `((defun-open ,(c-point 'bol))
+		       (medod-def 0))))
+
+		 (save-excursion
+		   (goto-char start)
+		   (goto-char (c-point 'bol))
+		   (when (c-syntactic-re-search-forward
+			  "{" (c-point 'bonl) t)
+		     `((objc-method-args-cont ,(c-point 'bol))
+		       (method-def 1))))
+
+		 (save-excursion
+		   (if (c-syntactic-re-search-forward "{" nil t)
+		       (progn
+			 (goto-char (c-point 'bol))
+			 (if (< start (point))
+			     `((objc-method-args-cont ,(c-point 'bol))
+			       (method-def 2)))))))))))
+
+	  ;; ;; @property
+	  ;; ((looking-at (c-lang-const c-opt-property-key))
+	  ;;  `((objc-property-intro ,(c-point 'boi))
+	  ;;    (topmost-intro ,(c-point 'bol))))
 
 
-		   ;; @end
-		   ((looking-at "@end")
-		    (save-excursion
-		       (objc++-forward-directive-1)
-		       (setq maybe-stmt-end (point))
-		       (when (> start maybe-stmt-end)
-			;; after @end
-			`((topmost-intro ,(c-point 'bol))))))
+	  ;; @end
+	  ((looking-at "@end")
+	   (save-excursion
+	     (objc++-forward-directive-1)
+	     (setq maybe-stmt-end (point))
+	     (when (> start maybe-stmt-end)
+	       ;; after @end
+	       `((topmost-intro ,(c-point 'bol))))))
 
-		   ))))
+	  ))
 
-      (message "found-syntax %S" found-syntax)
+       (apply orig-fun args)))))
 
-      (if (not found-syntax)
-	(save-excursion
-	  (if (objc++-beginning-of-defun-1)
-	      (setq objc-defun-beg (point)
-		    objc-defun-kwd (and
-				    (looking-at c-keywords-regexp)
-				    (c-keyword-sym (match-string 1)))
-		    objc-defun-end (and (objc++-end-of-defun-1) (point))))
-	  ;; (message "objc:\n beg=%S\n end=%S\n kwd=%S"
-	  ;; 	   objc-defun-beg objc-defun-end objc-defun-kwd)
-	  (goto-char start)
-	  (if (c-beginning-of-defun)
-	      (setq defun-beg (point)
-		    defun-kwd (and
-			       (looking-at c-keywords-regexp)
-			       (c-keyword-sym (match-string 1)))
-		    defun-end (and (c-end-of-defun) (point))))
-	  ;; (message "c++:\n beg=%S\n end=%S\n kwd=%S"
-	  ;; 	   defun-beg defun-end defun-kwd)
-	  (goto-char start)
-	  (if (not objc-defun-beg)
-	      (apply orig-fun args)
-	    (if (not (and defun-beg (>= objc-defun-beg defun-beg)))
-		(apply orig-fun args)
-	      (cond
-
-	       ;; NOTE: keeping this for now since we might want to
-	       ;; tag elements with the inclass syntatic element
-	       ;; symbol
-
-	       (t
-		(apply orig-fun args))))))
-	found-syntax)))))
 
 (defcustom objc++-font-lock-extra-types nil
   (c-make-font-lock-extra-types-blurb
