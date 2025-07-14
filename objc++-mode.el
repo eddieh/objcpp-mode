@@ -203,6 +203,94 @@
   objc++ t)
 (c-lang-defvar c-type-decl-end-used (c-lang-const c-type-decl-end-used))
 
+(defun objc++-font-lock-put-face (beg end face)
+  (if (featurep 'xemacs)
+      (c-put-font-lock-face
+       (1+ beg) (if end (1- end) (point)) font-lock-string-face)
+    (c-put-font-lock-face
+     beg (or end (point)) font-lock-string-face)))
+
+;; This removes the warning face from import delimiters that
+;; `c-font-lock-c++-modules' adds. In C++ import module statements
+;; must be terminated with a semicolon, whereas in Objective-C/C++ the
+;; #import directive should not be terminated with a semicolon.
+;;
+;; This should only remove the warning face from #import directives
+;; while leaving import module statements alone.
+(defun objc++-font-lock-fix-import (limit)
+  (while (and (< (point) limit)
+	      (re-search-forward
+	       (concat (c-lang-const c-opt-cpp-prefix) "\\<\\(import\\)\\>")
+	       limit t))
+    (goto-char (match-end 1))
+    (let (name-bounds pos beg end
+		      module-names)
+      (unless (c-skip-comments-and-strings limit)
+	(save-excursion
+	  (and (equal (match-string-no-properties 1) "import")
+	       (< (point) limit)
+	       (progn (c-forward-syntactic-ws limit)
+		      (setq pos (point)))) ;;)
+	  (goto-char pos)
+	  (cond
+
+	   ;; #import "header.h"
+	   ((and (eq (char-after) ?\")
+		 (setq pos (point))
+		 (c-safe (c-forward-sexp) t))
+	    (when (eq (char-before) ?\")
+	      (setq beg pos
+		    end (point)))
+	    (objc++-font-lock-put-face beg end font-lock-string-face)
+	    (c-forward-syntactic-ws limit)
+	    t)
+
+	   ;; #import <header>
+	   ((and (looking-at "<\\(?:\\\\.\\|[^\\\n\r\t>]\\)*\\(>\\)?")
+		 (< (match-end 0) limit))
+	    (setq beg (point))
+	    (goto-char (match-end 0))
+	    (when (match-end 1)
+	      (setq end (point)))
+	    (objc++-font-lock-put-face beg end font-lock-string-face)
+	    (c-forward-syntactic-ws limit)
+	    t)
+
+	   (t nil)))))))
+
+(c-lang-defconst c-cpp-matchers
+  objc++ (append
+          ;; Merge with cc-mode defaults - enables us to add more
+          ;; later
+          (c-lang-const c-cpp-matchers)))
+
+(c-lang-defconst c-basic-matchers-before
+  objc++ (append
+	  ;; Merge with cc-mode defaults - enables us to add more
+	  ;; later
+	  (c-lang-const c-basic-matchers-before)))
+
+(c-lang-defconst c-simple-decl-matchers
+  objc++ (append
+	  ;; Merge with cc-mode defaults - enables us to add more
+	  ;; later
+	  (c-lang-const c-simple-decl-matchers)))
+
+(c-lang-defconst c-complex-decl-matchers
+  objc++ (append
+	  ;; Merge with cc-mode defaults - enables us to add more
+	  ;; later
+	  (c-lang-const c-complex-decl-matchers)))
+
+(c-lang-defconst c-basic-matchers-after
+  objc++ (append
+
+	  '(objc++-font-lock-fix-import)
+
+	  ;; Merge with cc-mode defaults - enables us to add more
+	  ;; later
+	  (c-lang-const c-basic-matchers-after)))
+
 (defun objc++-nearest-backward-fn (&rest fn-list)
   (let ((start (point))
 	found pos pos-list nearest)
@@ -902,11 +990,15 @@ Key bindings:
 		     (c-make-macro-with-semi-re)
 		     ;; (message "used for init debugging")
 		     (c-update-modeline))
+
+  ;; (setq-local debug-on-error t)
+
   (c-initialize-cc-mode t)
   (setq abbrev-mode t)
   (c-init-language-vars objc++-mode)
   (c-common-init 'objc++-mode)
-  ;;(setq-local c-doc-comment-style '((objc++-mode . ???)))
+
+  ;; (setq-local c-doc-comment-style '((objc++-mode . ???)))
 
   (setq-local c-macro-names-with-semicolon
 	      '("NS_HEADER_AUDIT_BEGIN"
