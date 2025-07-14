@@ -704,12 +704,26 @@
 		       (method-def 1))))
 
 		 (save-excursion
-		   (if (c-syntactic-re-search-forward "{" nil t)
-		       (progn
-			 (goto-char (c-point 'bol))
-			 (if (< start (point))
-			     `((objc-method-args-cont ,(c-point 'bol))
-			       (method-def 2)))))))))))
+		   (c-end-of-statement)
+		   (setq maybe-next-stmt-beg (point))
+		   (goto-char start)
+		   (if (<= (point) maybe-next-stmt-beg)
+		       (if (c-syntactic-re-search-forward
+			    "{" maybe-next-stmt-beg t)
+			   (progn
+			     (goto-char (c-point 'bol))
+			     (if (< start (point))
+				 `((objc-method-args-cont ,(c-point 'bol))
+				   (method-def 2))))
+			 (progn
+			   (goto-char start)
+			   (goto-char (c-point 'bol))
+			   (if (c-syntactic-re-search-forward
+				";" (c-point 'bonl) t)
+			       `((objc-method-args-cont ,(c-point 'bol))
+				 (terminated-method-decl 0))
+			     `((topmost-intro ,(c-point 'bol))
+			       (after-method-decl 0))))))))))))
 
 	  ;; ;; @property
 	  ;; ((looking-at (c-lang-const c-opt-property-key))
