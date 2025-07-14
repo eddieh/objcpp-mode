@@ -266,6 +266,40 @@
 
 (c-lang-defconst c-basic-matchers-before
   objc++ (append
+
+	  `(;; Fontify class names in the beginning of message
+	    ;; expressions.
+	    ,(c-make-font-lock-search-function
+	      "\\["
+	      '((c-fontify-types-and-refs ()
+		  (c-forward-syntactic-ws limit)
+		  (let ((start (point)))
+		    ;; In this case we accept both primitive and known
+		    ;; types.
+		    (when (eq (c-forward-type) 'known)
+		      (goto-char start)
+		      (let ((c-promote-possible-types t))
+			(c-forward-type))))
+		  (if (> (point) limit) (goto-char limit)))))
+
+	    ;; The @interface/@implementation/@protocol directives.
+	    ,(c-make-font-lock-search-function
+	      (concat "\\<"
+		      (regexp-opt
+		       '("@interface" "@implementation" "@protocol")
+		       t)
+		      "\\>")
+	      '((c-fontify-types-and-refs
+		    (;; The font-lock package in Emacs is known to
+		     ;; clobber `parse-sexp-lookup-properties' (when
+		     ;; it exists).
+		     (parse-sexp-lookup-properties
+		      (cc-eval-when-compile
+			(boundp 'parse-sexp-lookup-properties))))
+		  (objc++-forward-directive)
+		  nil)
+		(goto-char (match-beginning 0)))))
+
 	  ;; Merge with cc-mode defaults - enables us to add more
 	  ;; later
 	  (c-lang-const c-basic-matchers-before)))
