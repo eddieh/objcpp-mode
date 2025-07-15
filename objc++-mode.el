@@ -149,6 +149,9 @@
 (c-lang-defconst c-inside-<>-type-kwds
   objc++ '("__kindof"))
 
+(c-lang-defconst c-recognize-<>-arglists
+  objc++ t)
+
 (c-lang-defconst c-block-stmt-1-kwds
   objc++ '("@finally" "@try" "@autoreleasepool"))
 
@@ -166,9 +169,12 @@
   objc++ '("super" "self"))
 
 (c-lang-defconst c-decl-prefix-re
-  objc++ (concat "\\([{}();,]+\\|"
+  objc++ (concat "\\([{}();,<]+\\|"
 		 (c-make-keywords-re nil (c-lang-const c-protection-kwds))
 		 "\\)"))
+
+(c-lang-defconst c-opt-type-suffix-key
+  objc++ (concat "\\(\\[" (c-lang-const c-simple-ws) "*\\]\\|\\.\\.\\.\\)"))
 
 (c-lang-defconst c-opt-extra-label-key
   objc++ (c-make-keywords-re t (c-lang-const c-protection-kwds)))
@@ -301,8 +307,7 @@
 
   (c-fontify-types-and-refs
       ((first t)
-       (c-promote-possible-types t)
-       (c-recognize-<>-arglists t))
+       (c-promote-possible-types t))
 
     (while (and
 	    (progn
@@ -314,8 +319,6 @@
 		    (forward-char)
 		    (c-forward-syntactic-ws)
 		    (c-forward-type)
-		    ;; TODO: get type paramaters working
-		    ;; (c-font-lock-<>-arglists limit)
 		    (prog1 (c-go-up-list-forward)
 		      (c-forward-syntactic-ws)))
 		t))
@@ -427,7 +430,7 @@
 			   (boundp 'parse-sexp-lookup-properties))))
 		    (save-restriction
 		      (narrow-to-region (point-min) limit)
-		      (objc++-font-lock-method)))
+		      (objc++-font-lock-method limit)))
 		  nil))
 	      (goto-char (match-end 1)))))
 
