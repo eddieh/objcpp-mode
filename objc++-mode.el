@@ -841,6 +841,17 @@
  'c-guess-basic-syntax
  :around #'objc++-guess-basic-syntax-guard)
 
+(defun objc++-guess-basic-syntax-or (orig-fun args orig-syntax or-syntax)
+  "Return the `c-guess-basic-syntax' original syntax guess if it contains
+the symbol ORIG-SYNTAX or return OR-SYNTAX."
+  (let ((orig-guess (apply orig-fun args)))
+    (if (seq-find
+	 (lambda (e)
+	   (eq (car e) orig-syntax))
+	 orig-guess)
+	orig-guess
+      or-syntax)))
+
 ;; (advice-mapc (lambda (fn prop) (message "%s" fn)) 'c-guess-basic-syntax)
 ;; (advice-remove 'c-guess-basic-syntax #'objc++-guess-basic-syntax)
 
@@ -967,8 +978,11 @@
 		   (goto-char (c-point 'bol))
 		   (when (c-syntactic-re-search-forward
 			  "{" (c-point 'bonl) t)
-		     `((objc-method-args-cont ,(c-point 'bol))
-		       (method-def 1))))
+		     (objc++-guess-basic-syntax-or
+		      orig-fun args
+		      'defun-block-intro
+		      `((objc-method-args-cont ,(c-point 'bol))
+			(method-def 1)))))
 
 		 (save-excursion
 		   (c-end-of-statement)
@@ -980,17 +994,26 @@
 			   (progn
 			     (goto-char (c-point 'bol))
 			     (if (< start (point))
-				 `((objc-method-args-cont ,(c-point 'bol))
-				   (method-def 2))))
+				 (objc++-guess-basic-syntax-or
+				  orig-fun args
+				  'defun-block-intro
+				  `((objc-method-args-cont ,(c-point 'bol))
+				    (method-def 2)))))
 			 (progn
 			   (goto-char start)
 			   (goto-char (c-point 'bol))
 			   (if (c-syntactic-re-search-forward
 				";" (c-point 'bonl) t)
-			       `((objc-method-args-cont ,(c-point 'bol))
-				 (terminated-method-decl 0))
-			     `((topmost-intro ,(c-point 'bol))
-			       (after-method-decl 0))))))))))))
+			       (objc++-guess-basic-syntax-or
+				orig-fun args
+				'defun-block-intro
+				`((objc-method-args-cont ,(c-point 'bol))
+				  (terminated-method-decl 0)))
+			     (objc++-guess-basic-syntax-or
+			      orig-fun args
+			      'defun-block-intro
+			      `((topmost-intro ,(c-point 'bol))
+				(after-method-decl 0)))))))))))))
 
 	  ;; ;; @property
 	  ;; ((looking-at (c-lang-const c-opt-property-key))
