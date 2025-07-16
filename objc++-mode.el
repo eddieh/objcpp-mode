@@ -79,7 +79,8 @@
 
 (c-lang-defconst c-primitive-type-kwds
   objc++ (append
-	  '("id" "Class" "SEL" "IMP" "BOOL" "instancetype")
+	  '("id" "Class" "SEL" "IMP" "BOOL" "instancetype"
+	  "_Bool" "_Complex" "_Generic" "_Imaginary")
 	  (c-lang-const c-primitive-type-kwds)))
 
 (c-lang-defconst c-class-decl-kwds
@@ -105,7 +106,7 @@
 
 	   ;; ARC bridge casts
 	   "__bridge" "__bridge_retained"
-	   "__bridge_transfer"
+	   "__bridge_retain" "__bridge_transfer"
 
 	   ;; Block storage qualifier
 	   "__block"
@@ -115,13 +116,16 @@
 	   "_Nullable_result" "_Null_unspecified"
 
 	   ;; Other qualifiers
-	   "_Noreturn" "_Atomic"
+	   "_Noreturn" "_Atomic" "_Thread_local"
 
 	   ))
 
 (c-lang-defconst c-typeof-kwds
-  objc++ '("alignof" "offsetof" "sizeof"
-	   "typeof" "typeof_unqual"))
+  objc++ '("alignas" "alignof" "offsetof" "sizeof"
+	   "typeof" "typeof_unqual"
+
+	   "_Alignas" "_Alignof" "_Atomic"
+	   "_Static_assert"))
 
 (c-lang-defconst c-other-decl-kwds
   objc++ '("@class" "@defs" "@end"
@@ -147,7 +151,7 @@
   objc++ '("id"))
 
 (c-lang-defconst c-inside-<>-type-kwds
-  objc++ '("__kindof"))
+  objc++ '("__covariant" "__contravariant" "__kindof"))
 
 (c-lang-defconst c-recognize-<>-arglists
   objc++ t)
@@ -163,7 +167,8 @@
 
 (c-lang-defconst c-constant-kwds
   objc++ '("nil" "Nil" "YES" "NO" "IBAction" "IBOutlet"
-	   "NS_DURING" "NS_HANDLER" "NS_ENDHANDLER"))
+	   "NS_DURING" "NS_HANDLER" "NS_ENDHANDLER"
+	   "__objc_yes" "__objc_no"))
 
 (c-lang-defconst c-primary-expr-kwds
   objc++ '("super" "self"))
