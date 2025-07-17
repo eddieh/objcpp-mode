@@ -235,7 +235,7 @@
 
 (c-lang-defconst c-opt-protocol-forward-decl-key
   objc++ (concat
-	  "@protocol"
+	  "\\(@protocol\\)"
 	  (c-lang-const c-simple-ws) "+"
 	  "\\(" (c-lang-const c-symbol-key) "\\)"
 	  (c-lang-const c-simple-ws) "*"
@@ -351,6 +351,7 @@
 
 	      ;; There's another argument if a colon follows.
 	      (eq (char-after) ?:)))
+
       (forward-char)
       (setq first nil))))
 
@@ -377,8 +378,7 @@
 
 (c-lang-defconst c-cpp-matchers
   objc++ (append
-          ;; Merge with cc-mode defaults - enables us to add more
-          ;; later
+          ;; new cpp matchers go here
           (c-lang-const c-cpp-matchers)))
 
 (c-lang-defconst c-basic-matchers-before
@@ -413,12 +413,10 @@
 		     (parse-sexp-lookup-properties
 		      (cc-eval-when-compile
 			(boundp 'parse-sexp-lookup-properties))))
-		  (objc++-forward-directive)
+		  (progn (objc++-forward-directive) nil)
 		  nil)
 		(goto-char (match-beginning 0)))))
 
-	  ;; Merge with cc-mode defaults - enables us to add more
-	  ;; later
 	  (c-lang-const c-basic-matchers-before)))
 
 (c-lang-defconst c-simple-decl-matchers
@@ -439,17 +437,16 @@
 		  nil))
 	      (goto-char (match-end 1)))))
 
-	  ;; Merge with cc-mode defaults - enables us to add more
-	  ;; later
 	  (c-lang-const c-simple-decl-matchers)))
 
 (c-lang-defconst c-complex-decl-matchers
   objc++ (append
 
-	  ;; Fontify method declarations in Objective-C, but first we
-	  ;; have to put the `c-decl-end' `c-type' property on all the
-	  ;; @-style directives that haven't been handled in
+	  ;; Fontify method declarations in Objective-C, but first
+	  ;; we have to put the `c-decl-end' `c-type' property on
+	  ;; all the @-style directives that haven't been handled in
 	  ;; `c-basic-matchers-before'.
+
 	  `(,(c-make-font-lock-search-function
 	      (c-make-keywords-re t
 		;; Exclude "@class" since that directive ends with a
@@ -462,8 +459,6 @@
 				     'c-type 'c-decl-end)))
 	    objc++-font-lock-methods)
 
-	  ;; Merge with cc-mode defaults - enables us to add more
-	  ;; later
 	  (c-lang-const c-complex-decl-matchers)))
 
 (c-lang-defconst c-basic-matchers-after
@@ -471,8 +466,6 @@
 
 	  '(objc++-font-lock-fix-import)
 
-	  ;; Merge with cc-mode defaults - enables us to add more
-	  ;; later
 	  (c-lang-const c-basic-matchers-after)))
 
 (defun objc++-nearest-backward-fn (&rest fn-list)
@@ -718,6 +711,46 @@
   (and (looking-at objc++-simple-directive-key)
        (goto-char (match-end 1))))
 
+(defun objc++-forward-protocol-op ()
+  ;; (when (looking-at (c-lang-const c-opt-protocol-op-key))
+  ;; (goto-char (match-end 0))
+  ;; (c-skip-ws-forward)
+  ;; (c-forward-name)
+  ;; (setq lim (point))
+  ;; (c-forward-syntactic-ws)
+  ;; (unless (eq (char-after) ?\))
+  ;;   (c-backward-syntactic-ws lim))
+  ;; nil)
+)
+
+(defun objc++-forward-protocol-forward-declaration-list ()
+  "Move forward over a forward declaration list of protocols."
+  (let (lim done)
+    (and (looking-at (c-lang-const c-opt-protocol-forward-decl-key))
+	 (progn
+	   (goto-char (match-end 1))
+	   (c-skip-ws-forward)
+	   (catch 'break
+	     (while (not done)
+
+	       (unless (c-forward-name)
+		 (setq done t)
+		 (throw 'break nil))
+	       (setq limit (point))
+
+	       (c-forward-syntactic-ws)
+	       (unless (eq (char-after) ?,)
+		 (setq done t)
+		 (throw 'break nil))
+	       (forward-char)
+	       (setq limit (point))
+
+	       (c-forward-syntactic-ws))
+	     (if (eq (char-after) ?\;)
+		 (forward-char)
+	       (c-backward-syntactic-ws lim)))
+	   t))))
+
 (defun objc++-forward-directive ()
   (interactive)
   (objc++-forward-directive-1))
@@ -735,7 +768,8 @@
   ;;
   ;; This function might do hidden buffer changes.
 
-  (let ((start (point))
+  (c-save-buffer-state
+      ((start (point))
 	start-char
 	(c-promote-possible-types t)
 	lim
@@ -746,6 +780,7 @@
 
     (if (or
 	 (objc++-forward-simple-directive)
+	 (objc++-forward-protocol-forward-declaration-list)
 
 	 (and
 	  (looking-at (c-lang-const c-opt-class-key))
@@ -777,17 +812,16 @@
 		  (c-forward-<>-arglist t))
 	      t))))
 
-	(c-backward-syntactic-ws lim)
+      (progn
+        (c-backward-syntactic-ws lim)
+        (c-clear-c-type-property start (1- (point)) 'c-decl-end)
+        (c-put-c-type-property (1- (point)) 'c-decl-end)
+        t)
 
-      ;; (progn
-      ;;   (c-backward-syntactic-ws lim)
-      ;;   (c-clear-c-type-property start (1- (point)) 'c-decl-end)
-      ;;   (c-put-c-type-property (1- (point)) 'c-decl-end)
-      ;;   t)
-
-      ;; (c-clear-c-type-property start (point) 'c-decl-end)
+      (c-clear-c-type-property start (point) 'c-decl-end)
 
       nil)))
+
 
 (advice-add
  'c-forward-declarator
@@ -797,50 +831,86 @@
 ;; (advice-remove 'c-forward-declarator #'objc++-forward-declarator-guard)
 
 (defun objc++-forward-declarator-guard (orig-fun &rest args)
-  (if (c-major-mode-is 'objc++-mode)
-      (apply #'objc++-forward-declarator orig-fun args)
-    (apply orig-fun args)))
+  (let (ret
+	(here (point))
+	(limit (car args)))
+    ;; (message "here=%S limit=%S" here limit)
+    (if (c-major-mode-is 'objc++-mode)
+	(progn
+	  (setq ret (apply #'objc++-forward-declarator orig-fun args))
+	  ;; (when (and ret (nth 0 ret) (nth 1 ret))
+	  ;;   (message (buffer-substring (nth 0 ret) (nth 1 ret))))
+	  ;; (message "objc++-forward-declarator %S" ret)
+	  ret)
+      (progn
+	(setq ret (apply orig-fun args))
+	;; (when (and ret (nth 0 ret) (nth 1 ret))
+	;;     (message (buffer-substring (nth 0 ret) (nth 1 ret))))
+	;; (message "c-forward-declarator %S" ret)
+	ret))))
 
 (defun objc++-forward-declarator (orig-fun &rest args)
-  (let ((here (point))
+  (c-save-buffer-state
+      ((here (point))
 	(limit (car args))
 	id-start id-end brackets-after-id paren-depth decorated
-	got-init arglist double-double-quote pos)
+	got-init arglist double-double-quote pos
+	(c-promote-possible-types t))
     (or limit (setq limit (point-max)))
-    (if (looking-at (c-lang-const c-opt-class-key))
-	(let (found)
-	  (prog1
-	      (setq found
-		    (c-syntactic-re-search-forward
-		     ;; Consider making the next regexp a
-		     ;; c-lang-defvar (2023-07-04).
-		     (if (c-major-mode-is 'objc++-mode)
-			 "\\(?:@end\\)\\|[;:,]\\|\\(=\\|[[(]\\)"
-		       "[;:,]\\|\\(=\\|\\s(\\)")
-		     limit 'limit t))
-	    (setq got-init
-		  (and found (match-beginning 1))))
-	  (when (and found
-		     (memq (char-before) '(?\; ?\: ?, ?= ?\( ?\[ ?{)))
-	    (backward-char))
-	  (list id-start id-end brackets-after-id got-init decorated arglist))
-      (goto-char here)
-      (apply orig-fun args))))
+    (or (progn
+	  (goto-char (c-point 'boi))
+	  (if (looking-at (c-lang-const c-opt-class-key))
+	      (and (or (looking-at (c-lang-const c-opt-protocol-op-key))
+		       (looking-at (c-lang-const c-opt-protocol-forward-decl-key)))
+		   (progn
+		     (goto-char here)
+		     (apply orig-fun args)))
+	    (progn
+	      (goto-char here)
+	      (apply orig-fun args))))
 
-(advice-add
- 'c-just-after-func-arglist-p
- :around #'objc++-just-after-func-arglist-p)
+	(progn
+	  (goto-char here) nil)
+
+	(or (and (progn
+		   (setq id-start (point))
+		   (c-skip-ws-forward)
+		   (c-forward-name)
+		   (setq id-end (point)))
+
+		 (let (found)
+		   (prog1
+		       (setq found
+			     (c-syntactic-re-search-forward
+			      ;; Consider making the next regexp a
+			      ;; c-lang-defvar (2023-07-04).
+			      "\\(?:@end\\)\\|[;:,]\\|\\(=\\|[[(]\\)"
+			      limit 'limit t))
+		     (setq got-init
+			   (and found (match-beginning 1))))
+		   (when (and found
+			      (memq (char-before) '(?\; ?\: ?, ?= ?\( ?\[ ?{)))
+		     (backward-char)
+		     (list id-start id-end brackets-after-id got-init decorated arglist))))
+
+	    (progn
+	      (goto-char here)
+	      (apply orig-fun args))))))
+
+;; (advice-add
+;;  'c-just-after-func-arglist-p
+;;  :around #'objc++-just-after-func-arglist-p)
 
 ;; (advice-mapc (lambda (fn prop) (message "%s" fn)) 'c-just-after-func-arglist-p)
 ;; (advice-remove 'c-just-after-func-arglist-p #'objc++-just-after-func-arglist-p)
 
-(defun objc++-just-after-func-arglist-p (orig-fun &rest args)
-  (let ((lim (car args)))
-    (if (c-major-mode-is 'objc++-mode)
-	(and
-	 (eq (c-beginning-of-statement-1 lim nil nil nil t) 'same)
-	 (not (objc++-forward-directive-1)))
-      (apply orig-fun args))))
+;; (defun objc++-just-after-func-arglist-p (orig-fun &rest args)
+;;   (let ((lim (car args)))
+;;     (if (c-major-mode-is 'objc++-mode)
+;; 	(and
+;; 	 (eq (c-beginning-of-statement-1 lim nil nil nil t) 'same)
+;; 	 (not (objc++-forward-directive-1)))
+;;       (apply orig-fun args))))
 
 (advice-add
  'c-guess-basic-syntax
@@ -1216,6 +1286,32 @@ Key bindings:
 		"NS_ASSUME_NONNULL_END"))
 
   (run-mode-hooks 'c-mode-common-hook))
+
+
+(defun objc++-reload-cc ()
+  (interactive)
+  (let ((dir (concat lisp-directory "/progmodes/"))
+	(mode-path (get this-command 'objc++-mode-path))
+	fname)
+    ;; `c-fallback-style' gets stuff pushed onto it by loading cc-vars.  So
+    ;; clear it out first, after a quick and dirty sanity check.
+    (if (file-exists-p (concat dir "cc-vars.elc"))
+	(setq c-fallback-style nil))
+    (mapc (lambda (f)
+            (condition-case err
+		(load-file (setq fname (concat dir "cc-" f ".elc")))
+              (error (message "Couldn't load %s" fname))))
+          '("defs" "vars" "fix" "engine" "cmds" "menus"
+            "align" "styles" "awk" "fonts" "mode"
+            "subword" "bytecomp" "compat" "guess"))
+    (mapatoms (lambda (sym)
+		(when (string-prefix-p "objc++-" (symbol-name sym))
+		  (when (boundp sym) (makunbound sym))
+		  (when (fboundp sym) (fmakunbound sym)))))
+    (load-file mode-path)
+    (find-alternate-file buffer-file-name)))
+(put 'objc++-reload-cc 'objc++-mode-path load-file-name)
+
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.mm\\'" . objc++-mode))
