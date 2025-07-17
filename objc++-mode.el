@@ -224,9 +224,11 @@
 	  "@protocol" (c-lang-const c-simple-ws) "*" "\("))
 (c-lang-defvar c-opt-protocol-op-key (c-lang-const c-opt-protocol-op-key))
 
+;; FIXME: Since @class is alwasy a forward declaration, this probably
+;; does not need to match anything but @class
 (c-lang-defconst c-opt-class-forward-decl-key
   objc++ (concat
-	  "@class"
+	  "\\(@class\\)"
 	  (c-lang-const c-simple-ws) "+"
 	  "\\(" (c-lang-const c-symbol-key) "\\)"
 	  (c-lang-const c-simple-ws) "*"
@@ -238,6 +240,7 @@
   objc++ (concat
 	  "\\(@protocol\\)"
 	  (c-lang-const c-simple-ws) "+"
+	  "[^(]"
 	  "\\(" (c-lang-const c-symbol-key) "\\)"
 	  (c-lang-const c-simple-ws) "*"
 	  "\\([,;]\\)"))
@@ -384,6 +387,23 @@
 
 (c-lang-defconst c-basic-matchers-before
   objc++ (append
+
+	  ;; Markup and fontify forward declaration lists.
+	  `(,(c-make-font-lock-search-function
+	      (concat
+	       (c-lang-const c-opt-class-forward-decl-key)
+	       "\\|"
+	       (c-lang-const c-opt-protocol-forward-decl-key))
+	      '((c-fontify-types-and-refs
+		    (;; The font-lock package in Emacs is known to
+		     ;; clobber `parse-sexp-lookup-properties' (when
+		     ;; it exists).
+		     (parse-sexp-lookup-properties
+		      (cc-eval-when-compile
+			(boundp 'parse-sexp-lookup-properties))))
+		  (progn (objc++-forward-forward-declaration-list) nil)
+		  nil)
+		(goto-char (match-beginning 0)))))
 
 	  `(;; Fontify class names in the beginning of message
 	    ;; expressions.
@@ -751,21 +771,28 @@
   ;; nil)
 )
 
-(defun objc++-forward-protocol-forward-declaration-list ()
-  "Move forward over a forward declaration list of protocols."
+(defun objc++-forward-forward-declaration-list ()
+  "Move forward over a forward declaration list."
+  (interactive)
   (c-save-buffer-state
       ((start (point))
-       lim done)
-    (and (looking-at (c-lang-const c-opt-protocol-forward-decl-key))
+       lim done
+       type-beg type-end type-positions
+       (c-promote-possible-types t))
+    (and (or (looking-at (c-lang-const c-opt-class-forward-decl-key))
+	     (looking-at (c-lang-const c-opt-protocol-forward-decl-key)))
 	 (progn
 	   (goto-char (match-end 1))
 	   (c-skip-ws-forward)
 	   (catch 'break
 	     (while (not done)
+	       (setq type-beg (point))
 	       (unless (c-forward-name)
 		 (setq done t)
 		 (throw 'break nil))
-	       (setq limit (point))
+	       (setq type-end (point)
+		     lim type-end)
+	       (push (list type-beg type-end) type-positions)
 
 	       (c-forward-syntactic-ws)
 	       (unless (eq (char-after) ?,)
@@ -773,11 +800,26 @@
 		 (throw 'break nil))
 	       (forward-char)
 	       (setq limit (point))
-	       (c-forward-syntactic-ws))
+	       (c-forward-syntactic-ws)))
 
-	     (if (eq (char-after) ?\;)
-		 (forward-char)
-	       (c-backward-syntactic-ws lim)))
+	   (if (eq (char-after) ?\;)
+	       (forward-char)		; past the semicolon
+	     (c-backward-syntactic-ws lim))
+	   t)
+	 (progn
+	   (c-clear-c-type-property
+	    start (1- (point)) 'c-decl-arg-start)
+	   (c-clear-c-type-property
+	    start (1- (point)) 'c-decl-id-start)
+	   (c-clear-c-type-property
+	    start (1- (point)) 'c-decl-type-start)
+	   (c-clear-c-type-property
+	    start (1- (point)) 'c-decl-end)
+
+	   (dolist (n type-positions)
+	     (c-put-c-type-property (1- (car n)) 'c-decl-type-start)
+	     (c-put-c-type-property (cadr n) 'c-decl-end))
+
 	   t))))
 
 (defun objc++-forward-directive ()
