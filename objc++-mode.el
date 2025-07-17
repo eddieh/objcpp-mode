@@ -21,6 +21,7 @@
 (require 'cc-mode)
 
 (eval-when-compile
+  (require 'rx)
   (require 'cl)
   (require 'cc-langs)
   (require 'cc-fonts)
@@ -401,11 +402,38 @@
 
 	    ;; The @interface/@implementation/@protocol directives.
 	    ,(c-make-font-lock-search-function
-	      (concat "\\<"
-		      (regexp-opt
-		       '("@interface" "@implementation" "@protocol")
-		       t)
-		      "\\>")
+
+	      (rx
+	       (or
+
+		;; @interface ClassName
+		(group (seq (seq symbol-start "@interface" symbol-end)
+			    (1+ white)
+			    (seq symbol-start (* alnum) symbol-end)))
+
+		;; @implementation ClassName
+		(group (seq (seq symbol-start "@implementation" symbol-end)
+			    (1+ white)
+			    (seq symbol-start (* alnum) symbol-end)))
+
+		;; Match
+		;;
+		;;   @protocol ProtocolName
+		;;
+		;; not
+		;;
+		;;   @protocol ProtocolName1, ProtocolName2;
+		;;
+		;; and not
+		;;
+		;;   @protocol(ProtocolName)
+		(group (seq (seq symbol-start "@protocol" symbol-end)
+			    (1+ white)
+			    (not (char "("))
+			    (seq symbol-start (* alnum) symbol-end)
+			    (* white)
+			    (not (char ",;"))))))
+
 	      '((c-fontify-types-and-refs
 		    (;; The font-lock package in Emacs is known to
 		     ;; clobber `parse-sexp-lookup-properties' (when
@@ -725,14 +753,15 @@
 
 (defun objc++-forward-protocol-forward-declaration-list ()
   "Move forward over a forward declaration list of protocols."
-  (let (lim done)
+  (c-save-buffer-state
+      ((start (point))
+       lim done)
     (and (looking-at (c-lang-const c-opt-protocol-forward-decl-key))
 	 (progn
 	   (goto-char (match-end 1))
 	   (c-skip-ws-forward)
 	   (catch 'break
 	     (while (not done)
-
 	       (unless (c-forward-name)
 		 (setq done t)
 		 (throw 'break nil))
@@ -744,8 +773,8 @@
 		 (throw 'break nil))
 	       (forward-char)
 	       (setq limit (point))
-
 	       (c-forward-syntactic-ws))
+
 	     (if (eq (char-after) ?\;)
 		 (forward-char)
 	       (c-backward-syntactic-ws lim)))
@@ -780,7 +809,6 @@
 
     (if (or
 	 (objc++-forward-simple-directive)
-	 (objc++-forward-protocol-forward-declaration-list)
 
 	 (and
 	  (looking-at (c-lang-const c-opt-class-key))
@@ -812,11 +840,19 @@
 		  (c-forward-<>-arglist t))
 	      t))))
 
-      (progn
-        (c-backward-syntactic-ws lim)
-        (c-clear-c-type-property start (1- (point)) 'c-decl-end)
-        (c-put-c-type-property (1- (point)) 'c-decl-end)
-        t)
+	(progn
+          (c-backward-syntactic-ws lim)
+	  (progn (when lim
+		   (c-clear-c-type-property
+		    (1- lim) (1- (point)) 'c-decl-type-start))
+		 (c-clear-c-type-property
+		  start (1- (point)) 'c-decl-end))
+	  (progn (when lim
+		   (c-put-c-type-property
+		    (1- lim) 'c-decl-type-start))
+		 (c-put-c-type-property
+		  (1- (point)) 'c-decl-end))
+          t)
 
       (c-clear-c-type-property start (point) 'c-decl-end)
 
@@ -856,6 +892,7 @@
 	id-start id-end brackets-after-id paren-depth decorated
 	got-init arglist double-double-quote pos
 	(c-promote-possible-types t))
+    ;; (message "point=%S limit=%S" here limit)
     (or limit (setq limit (point-max)))
     (or (progn
 	  (goto-char (c-point 'boi))
