@@ -1029,7 +1029,7 @@ POSITIONS is a list of 3-tuples (beg end c-type)."
        sym-beg sym-end sym-positions
        (c-promote-possible-types t))
     (or lim (setq lim (point-max)))
-    (if  (looking-at "@property")
+    (if (looking-at "@property")
 	(and
 	 (progn
 	   (goto-char (match-end 0))
@@ -1064,6 +1064,9 @@ POSITIONS is a list of 3-tuples (beg end c-type)."
 			  (forward-char) (setq back-lim (point)
 					       expect nil)
 			  (c-forward-syntactic-ws lim))
+		 	(unless (eq (char-after) ?,) (throw 'break nil))
+			(forward-char) (setq back-lim (point))
+			(c-forward-syntactic-ws lim)
 			t)
 
 		       (t
@@ -1099,11 +1102,11 @@ POSITIONS is a list of 3-tuples (beg end c-type)."
 	     (if (eq (char-after) ?\;)
 		 (forward-char)
 	       (c-backward-syntactic-ws back-lim)))
-	   t))
-      (progn
-	(objc++-clear-decl-properties start)
-	(objc++-put-decl-properties sym-positions)
-	t))))
+	   t)
+	 (progn
+	   (objc++-clear-decl-properties start)
+	   (objc++-put-decl-properties sym-positions)
+	t)))))
 
 (defun objc++-forward-property-directive ()
   "Move forward over a forward @property directive."
