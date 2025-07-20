@@ -33,6 +33,21 @@
   :group 'prog-mode
   :prefix "objc++-")
 
+(defcustom objc++-decl-spots-debug nil
+  "Flag to turn on decl spot debugging."
+  :type 'boolean
+  :group 'objc++)
+
+(defface objc++-decl-start-debug-face
+  '((t :foreground "SeaGreen1" :background "SeaGreen4"))
+  "Used to indicate the start of a decl area."
+  :group 'objc++)
+
+(defface objc++-decl-end-debug-face
+  '((t :foreground "VioletRed1" :background "VioletRed4"))
+  "Used to indicate the end of a decl area."
+  :group 'objc++)
+
 
 (eval-and-compile
   (c-add-language 'objc++-mode 'c++-mode)
@@ -254,9 +269,9 @@
 (defun objc++-font-lock-put-face (beg end face)
   (if (featurep 'xemacs)
       (c-put-font-lock-face
-       (1+ beg) (if end (1- end) (point)) font-lock-string-face)
+       (1+ beg) (if end (1- end) (point)) face)
     (c-put-font-lock-face
-     beg (or end (point)) font-lock-string-face)))
+     beg (or end (point)) face)))
 
 ;; This removes the warning face from import delimiters that
 ;; `c-font-lock-c++-modules' adds. In C++ import module statements
@@ -490,21 +505,31 @@
 (c-lang-defconst c-complex-decl-matchers
   objc++ (append
 
-	  ;; Fontify method declarations in Objective-C, but first
-	  ;; we have to put the `c-decl-end' `c-type' property on
-	  ;; all the @-style directives that haven't been handled in
-	  ;; `c-basic-matchers-before'.
+	  ;; Markup and fontify property directives
+	  `(,(c-make-font-lock-search-function
+	      (c-lang-const c-opt-property-key)
+	      '((c-fontify-types-and-refs
+		    (;; The font-lock package in Emacs is known to
+		     ;; clobber `parse-sexp-lookup-properties' (when
+		     ;; it exists).
+		     (parse-sexp-lookup-properties
+		      (cc-eval-when-compile
+			(boundp 'parse-sexp-lookup-properties))))
+		  (progn (objc++-forward-property-directive) nil)
+		  nil)
+		(goto-char (match-beginning 0)))))
+
+	  ;; Fontify method declarations in Objective-C, but first we
+	  ;; have to put the `c-decl-end' `c-type' property on all the
+	  ;; @-style directives that haven't been handled elsewhere.
 
 	  `(,(c-make-font-lock-search-function
 	      (c-make-keywords-re t
-		;; Exclude "@class" since that directive ends with a
-		;; semicolon anyway.
-		(delete "@class"
-			(append (c-lang-const c-protection-kwds)
-				(c-lang-const c-other-decl-kwds)
-				nil)))
-	      '((c-put-char-property (1- (match-end 1))
-				     'c-type 'c-decl-end)))
+		(append (c-lang-const c-protection-kwds)
+			'("@defs" "@end" "@compatibility_alias")
+			nil))
+		'((c-put-char-property (1- (match-end 1))
+				       'c-type 'c-decl-end)))
 	    objc++-font-lock-methods)
 
 	  (c-lang-const c-complex-decl-matchers)))
@@ -900,6 +925,198 @@
 
       nil)))
 
+(defun objc++-clear-decl-properties (start &optional end)
+  "Clears c-type properties from START to END. If END is nil, use current
+point."
+  (or end (setq end (point)))
+  (remove-text-properties start end '(c-type nil)))
+
+(defun objc++-put-decl-properties (positions)
+  "Inserts c-decl-* and corresponding c-decl-end c-type properties from
+POSITIONS.
+
+POSITIONS is a list of 3-tuples (beg end c-type)."
+  (dolist (pos positions)
+    (let ((beg (nth 0 pos))
+	  (end (nth 1 pos))
+	  (start-type (nth 2 pos)))
+      (c-put-c-type-property beg start-type)
+      (c-put-c-type-property end 'c-decl-end)
+
+      (when objc++-decl-spots-debug
+	(objc++-font-lock-put-face beg (1+ beg) 'objc++-decl-start-face)
+	(objc++-font-lock-put-face end (1+ end) 'objc++-decl-end-face)))))
+
+(defun objc++-forward-@dynamic (&optional lim)
+  (interactive)
+  (c-save-buffer-state
+      ((start (point)) back-lim
+       sym-beg sym-end sym-positions
+       (c-promote-possible-types t))
+    (or lim (setq lim (point-max)))
+    (if (looking-at "@dynamic")
+	(and
+	 (progn
+	   (goto-char (match-end 0))
+	   (c-forward-syntactic-ws lim)
+	   (catch 'break
+	     ;; (class)
+	     (when (eq (char-after) ?\()
+	       (forward-char) (setq back-lim (point))
+	       (c-forward-syntactic-ws lim)
+	       (unless (re-search-forward "class" lim) (throw 'break nil))
+	       (setq back-lim (point))
+	       (c-forward-syntactic-ws lim)
+	       (unless (eq (char-after) ?\)) (throw 'break nil))
+	       (forward-char) (setq back-lim (point))
+	       (c-forward-syntactic-ws lim))
+	     ;; prop-list
+	     (while (< (point) lim)
+	       (setq sym-beg (point))
+	       (unless (c-forward-name t) (throw 'break nil))
+	       (setq sym-end (point) back-lim sym-end)
+	       (push (list sym-beg sym-end 'c-decl-id-start)
+		     sym-positions)
+	       (c-forward-syntactic-ws lim)
+	       (unless (eq (char-after) ?,) (throw 'break nil))
+	       (forward-char) (setq back-lim (point))
+	       (c-forward-syntactic-ws lim)))
+	   (if (eq (char-after) ?\;)
+	       (forward-char)
+	     (c-backward-syntactic-ws back-lim))
+	   t)
+	 (progn
+	   (objc++-clear-decl-properties start)
+	   (objc++-put-decl-properties sym-positions)
+	   t)))))
+
+(defun objc++-forward-@synthesize (&optional lim)
+  (interactive)
+  (c-save-buffer-state
+      ((start (point)) back-lim
+       sym-beg sym-end sym-positions
+       (c-promote-possible-types t))
+    (or lim (setq lim (point-max)))
+    (if (looking-at "@synthesize")
+	(and
+	 (progn
+	   (goto-char (match-end 0))
+	   (c-forward-syntactic-ws lim)
+	   (catch 'break
+	     (while (< (point) lim)
+	       (setq sym-beg (point))
+	       (unless (c-forward-name t) (throw 'break nil))
+	       (setq sym-end (point) back-lim sym-end)
+	       (push (list sym-beg sym-end 'c-decl-id-start) sym-positions)
+	       (c-forward-syntactic-ws lim)
+	       (unless (memq (char-after) '(?= ?,)) (throw 'break nil))
+	       (forward-char) (setq back-lim (point))
+	       (c-forward-syntactic-ws lim)))
+	   (if (eq (char-after) ?\;)
+	       (forward-char)
+	     (c-backward-syntactic-ws back-lim))
+	   t)
+	 (progn
+	   (objc++-clear-decl-properties start)
+	   (objc++-put-decl-properties sym-positions)
+	   t)))))
+
+(defun objc++-forward-@property (&optional lim)
+  (interactive)
+  (c-save-buffer-state
+      ((start (point))
+       back-lim expect
+       sym-beg sym-end sym-positions
+       (c-promote-possible-types t))
+    (or lim (setq lim (point-max)))
+    (if  (looking-at "@property")
+	(and
+	 (progn
+	   (goto-char (match-end 0))
+	   (c-forward-syntactic-ws lim)
+	   (when (eq (char-after) ?\()
+	     (forward-char) (setq back-lim (point))
+	     (c-forward-syntactic-ws lim)
+	     (catch 'break
+	       (while (< (point) lim)
+		 (setq expect nil)
+		 (cond ((or (looking-at "getter")
+			    (and (looking-at "setter") (setq expect ?:)))
+			(c-forward-token-2 1 t lim)
+			(save-excursion
+			  (c-backward-syntactic-ws back-lim)
+			  (setq back-lim (point)))
+			(c-forward-syntactic-ws lim)
+			(unless (eq (char-after) ?=) (throw 'break nil))
+			(forward-char) (setq back-lim (point))
+
+			(c-forward-syntactic-ws lim)
+			(setq sym-beg (point))
+			(unless (c-forward-name t) (throw 'break nil))
+			(setq sym-end (point) back-lim sym-end)
+			;;(push (list sym-beg sym-end 'meth) sym-positions)
+			(objc++-font-lock-put-face
+			 sym-beg sym-end font-lock-function-name-face)
+
+			(c-forward-syntactic-ws lim)
+			(when expect
+			  (unless (eq (char-after) expect) (throw 'break nil))
+			  (forward-char) (setq back-lim (point)
+					       expect nil)
+			  (c-forward-syntactic-ws lim))
+			t)
+
+		       (t
+			(c-forward-token-2 1 t lim)
+			(save-excursion
+			  (c-backward-syntactic-ws back-lim)
+			  (setq back-lim (point)))
+			(c-forward-syntactic-ws lim)
+			(unless (eq (char-after) ?,) (throw 'break nil))
+			(forward-char) (setq back-lim (point))
+			(c-forward-syntactic-ws lim)))))
+	     (if (eq (char-after) ?\))
+		 (progn
+		   (forward-char) (setq back-lim (point))
+		   (c-forward-syntactic-ws lim))
+	       (c-backward-syntactic-ws back-lim)))
+
+	   (catch 'break
+	     (let ((c-recognize-<>-arglists t)
+		   (c-parse-and-markup-<>-arglists t)
+		   c-restricted-<>-arglists)
+	       (unless (c-forward-type) (throw 'break nil)))
+	     (c-forward-syntactic-ws lim)
+	     (when (c-syntactic-re-search-forward c-symbol-start lim t)
+	       (backward-char))
+
+	     (setq sym-beg (point))
+	     (unless (c-forward-name t) (throw 'break nil))
+	     (setq sym-end (point) back-lim sym-end)
+	     (push (list sym-beg sym-end 'c-decl-id-start) sym-positions)
+	     (c-forward-syntactic-ws lim)
+
+	     (if (eq (char-after) ?\;)
+		 (forward-char)
+	       (c-backward-syntactic-ws back-lim)))
+	   t))
+      (progn
+	(objc++-clear-decl-properties start)
+	(objc++-put-decl-properties sym-positions)
+	t))))
+
+(defun objc++-forward-property-directive ()
+  "Move forward over a forward @property directive."
+  (interactive)
+  (c-save-buffer-state
+      ((start (point)) lim)
+    (or lim (setq lim (point-max)))
+    (when (looking-at (c-lang-const c-opt-property-key))
+      (cond
+       ((objc++-forward-@dynamic lim) t)
+       ((objc++-forward-@synthesize lim) t)
+       ((objc++-forward-@property lim) t)
+       (t nil)))))
 
 (advice-add
  'c-forward-declarator
