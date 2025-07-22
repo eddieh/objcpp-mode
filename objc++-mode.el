@@ -96,7 +96,8 @@
 (c-lang-defconst c-primitive-type-kwds
   objc++ (append
 	  '("id" "Class" "SEL" "IMP" "BOOL" "instancetype"
-	  "_Bool" "_Complex" "_Generic" "_Imaginary")
+	    "NSUInteger" "NSInteger"
+	    "_Bool" "_Complex" "_Generic" "_Imaginary")
 	  (c-lang-const c-primitive-type-kwds)))
 
 (c-lang-defconst c-class-decl-kwds
