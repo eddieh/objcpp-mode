@@ -1612,8 +1612,122 @@ Key bindings:
     (find-alternate-file buffer-file-name)))
 (put 'objc++-reload-cc 'objc++-mode-path load-file-name)
 
+(defvar objc++-guess-region-max
+  (max c-guess-region-max magic-mode-regexp-match-limit)
+  "The larger value of `c-guess-region-max' or
+`magic-mode-regexp-match-limit'.")
+
+(defconst objc++-c++-regexp
+  (eval-when-compile
+    (let ((id "[a-zA-Z_][a-zA-Z0-9_]*") (ws "[ \t]+") (ws-maybe "[ \t]*")
+          (headers '("string" "string_view" "iostream" "map" "unordered_map"
+                     "set" "unordered_set" "vector" "tuple")))
+      (concat "^" ws-maybe "\\(?:"
+                    "using"     ws "\\(?:namespace" ws
+                                     "\\|" id "::"
+                                     "\\|" id ws-maybe "=\\)"
+              "\\|" "\\(?:inline" ws "\\)?namespace"
+                    "\\(?:" ws "\\(?:" id "::\\)*" id "\\)?" ws-maybe "{"
+              "\\|" "class"     ws id
+                    "\\(?:" ws "final" "\\)?" ws-maybe "[:{;\n]"
+              "\\|" "struct"     ws id "\\(?:" ws "final" ws-maybe "[:{\n]"
+                                         "\\|" ws-maybe ":\\)"
+              "\\|" "template"  ws-maybe "<.*?>"
+	      ;; test for `#pragma once'?
+              "\\|" "#include"  ws-maybe "<" (regexp-opt headers) ">"
+              "\\)")))
+  "A regexp applied to header files to check if there are C++ constructs.")
+
+(defconst objc++-objc-regexp
+  (eval-when-compile
+    (let ((id "[a-zA-Z_][a-zA-Z0-9_]*") (id+prop-path "[a-zA-Z_][a-zA-Z0-9_.]*")
+	  (ws "[ \t]+") (ws-maybe "[ \t]*"))
+
+      ;; ;; method decl or def (not all, but many)
+      ;; "\\(?:"
+      ;;     "^\\s *" "\\(?:[+-]\\)" ws-maybe
+      ;;     "\\(?:" "([^)]*)" ws-maybe "\\)?"
+      ;;     "\\(?:" id "\\)" ws-maybe "[:;{\n]"
+      ;; "\\)"
+
+      ;; ;; method call (not all, but many)
+      ;; "\\(?:"
+      ;;     "\\[" ws-maybe "\\(?:" id+prop-path "\\)" ws "\\(?:" id "\\)" ws-maybe "[:\\]]"
+      ;; "\\)"
+
+      (regexp-opt
+       '("#import" "@import" "@class" "@protocol"
+	 "FOUNDATION_EXPORT" "FOUNDATION_EXTERN" "FOUNDATION_IMPORT"
+	 "NS_INLINE" "FOUNDATION_STATIC_INLINE" "FOUNDATION_EXTERN_INLINE"
+	 "NS_FORMAT_FUNCTION" "NS_FORMAT_ARGUMENT"
+	 "NS_ENUM" "NS_OPTIONS" "NS_CLOSED_ENUM" "NS_ERROR_ENUM"
+	 "NS_STRING_ENUM" "NS_EXTENSIBLE_STRING_ENUM"
+	 "NS_TYPED_ENUM" "NS_TYPED_EXTENSIBLE_ENUM" "NS_SWIFT_BRIDGED_TYPEDEF"
+	 "NS_ASSUME_NONNULL_BEGIN" "NS_HEADER_AUDIT_BEGIN"
+	 "APPKIT_EXTERN" "APPKIT_PRIVATE_EXTERN" "APPKIT_PRIVATE"
+	 "UIKIT_EXTERN" "UIKIT_STATIC_INLINE" "UIKIT_EXTERN_C_BEGIN"
+	 "@compatibility_alias" "@defs" "@encode" "@end" "@implementation"
+	 "@interface" "@private" "@protected" "@public" "@selector"
+	 "@throw" "@try" "@catch" "@finally" "@synchronized"
+	 "@autoreleasepool" "@property" "@package" "@required" "@optional"
+	 "@synthesize" "@dynamic" "@available"))))
+  "A regexp applied to header files to check if there are ObjC constructs.")
+
+
+;;;###autoload
+(defun objc++-c/c++/objc/objc++-mode ()
+  "Analyze buffer and enable C/C++/ObjC/ObjC++ mode.
+
+The .h extension is used for C/C++/ObjC/ObjC++ header files. This makes
+matching on file name insufficient for detecting major mode that should
+be used.
+
+This function attempts to use file contents to determine whether the
+code is C/C++/ObjC/ObjC++ and based on that chooses whether to enable
+`c-mode', `c++-mode', `objc-mode', or `objc++-mode'."
+  (interactive)
+  (let (mode
+	(found-c++
+	 (if (save-excursion
+	       (save-restriction
+		 (save-match-data
+		   (widen)
+		   (goto-char (point-min))
+		   (prog1 (re-search-forward objc++-c++-regexp
+					     (+ (point) objc++-guess-region-max) t)
+		     (message "c++ %S" (match-data))))))
+	     t))
+	(found-objc
+	 (if (save-excursion
+	       (save-restriction
+		 (save-match-data
+		   (widen)
+		   (goto-char (point-min))
+		   (prog1 (re-search-forward objc++-objc-regexp
+					     (+ (point) objc++-guess-region-max) t)
+		     (message "objc %S" (match-data))))))
+	     t)))
+    (cond ((and found-c++ found-objc)
+	   (setq mode 'objc++-mode))
+	  (found-c++
+	   (setq mode 'c++-mode))
+	  (found-objc
+	   (setq mode 'objc-mode))
+	  (t
+	   (setq mode 'c-mode)))
+    (funcall (if (fboundp 'major-mode-remap)
+		 (major-mode-remap mode)
+	       mode))))
+
+(defun e/objc-headerp ()
+  (and buffer-file-name
+       (string= (file-name-extension buffer-file-name) "h")
+       (re-search-forward "@\\<interface\\>"
+			  magic-mode-regexp-match-limit t)))
+
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.mm\\'" . objc++-mode))
+(add-to-list 'auto-mode-alist '("\\.h\\'" . objc++-c/c++/objc/objc++-mode))
 
 (provide 'objc++-mode)
