@@ -1224,7 +1224,10 @@ the symbol ORIG-SYNTAX or return OR-SYNTAX."
 	 (lambda (e)
 	   (eq (car e) orig-syntax))
 	 orig-guess)
-	orig-guess
+	(if (nth 1 or-syntax)
+	    (let ((rest (nthcdr 1 or-syntax)))
+	      (append orig-guess rest))
+	  orig-guess)
       or-syntax)))
 
 ;; (advice-mapc (lambda (fn prop) (message "%s" fn)) 'c-guess-basic-syntax)
@@ -1441,6 +1444,60 @@ names)."))
 (defun objc++-font-lock-keywords ()
   (c-compose-keywords-list objc++-font-lock-keywords))
 
+(defun objc++-lineup-objc-method-call-cont-dwim (langelem)
+  "Simple +1 c-basic-offset indention from the start of the
+statements indention. The anti-Xcode & anti-Elisp style.
+
+    value = [NSSomeClass someObjectWithString:@\"arg1\"
+        secondString:@\"arg2\"
+        thridObject:NULL
+    ];
+            ^
+            |__________ anchor pos [12]
+        ^
+        |______________ target column (start of stm + c-basic-offset) [8]
+    ^
+    |__________________ start of statement indention [4]
+
+
+    ret = desired offset realative to anchor
+    anchor = anchor pos
+    stm-indent = start of statement indention
+
+    ret = stm-indent + c-basic-offset - anchor
+
+Works with: objc-method-call-cont."
+  (save-excursion
+    (back-to-indentation)
+    (let* ((anchor (c-langelem-pos langelem))
+	   (paren-state (c-parse-state))
+	   (containing-sexp (c-most-enclosing-brace paren-state))
+	   (stm-indent (progn
+			 (goto-char containing-sexp)
+			 (setq placeholder (c-point 'boi))
+			 (if (and (c-safe (backward-up-list 1) t)
+				  (>= (point) placeholder))
+			     (progn
+			       (forward-char)
+			       (skip-chars-forward " \t"))
+			   (goto-char placeholder))
+			 (point))))
+      (- (+ stm-indent c-basic-offset) anchor))))
+
+(defun objc++-lineup-arglist-cont-dwim (langelem)
+  "Hanlde block list in arglist.
+
+Blocks in arglist should indent like this:
+
+    functionCall({
+        some
+    });
+
+Anything else is ugly."
+  (save-excursion
+    (if langelem
+	0
+      '+)))
 
 (defconst objc++-syle
   '((c-basic-offset . 4)
@@ -1485,24 +1542,28 @@ names)."))
     ;; no spaces needed before a label
     ;; (c-label-minimum-indentation . 0)
     ;; define offsets for some code parts
-    (c-offsets-alist . ((innamespace           . 0)
-			(inextern-lang         . 0)
-			(access-label          . -)
-			(case-label            . 0)
-			(member-init-intro     . +)
-			(topmost-intro         . 0)
-			(arglist-cont-nonempty . +)
-			(block-open            . 0)
-			(brace-list-open       . +)
-			(brace-list-intro      . +)
-			(brace-list-entry      . 0)
-			(brace-list-close      . 0)
-			(label                 . -)
-			(statement-cont        . 4)
-			(substatement-open     . 0)
-			(case-label            . 0)
-			(inher-intro           . ++)
-			(inline-open           . 0)))
+    (c-offsets-alist
+     . ((innamespace           . 0)
+	(inextern-lang         . 0)
+	(access-label          . -)
+	(case-label            . 0)
+	(member-init-intro     . +)
+	(topmost-intro         . 0)
+	(objc-method-call-cont . objc++-lineup-objc-method-call-cont-dwim)
+	;;(arglist-cont-nonempty . objc++-lineup-arglist-cont-dwim)
+	(arglist-cont-nonempty . 0)
+	(arglist-close         . 0)
+	(block-open            . 0)
+	(brace-list-open       . +)
+	(brace-list-intro      . +)
+	(brace-list-entry      . 0)
+	(brace-list-close      . 0)
+	(label                 . -)
+	(statement-cont        . 4)
+	(substatement-open     . 0)
+	(case-label            . 0)
+	(inher-intro           . ++)
+	(inline-open           . 0)))
     ;; indent line when pressing tab, instead of a plain tab character
     (c-tab-always-indent . t)
     (indent-tabs-mode . nil)
